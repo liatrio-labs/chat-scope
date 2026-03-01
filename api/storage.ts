@@ -63,6 +63,49 @@ export interface StreamResult {
   nextOffset: number;
 }
 
+function extractTextFromContentBlock(block: ContentBlock): string {
+  if (block.type === "text") {
+    return block.text ?? "";
+  }
+
+  if (block.type === "thinking") {
+    return block.thinking ?? "";
+  }
+
+  if (block.type === "tool_result") {
+    if (typeof block.content === "string") {
+      return block.content;
+    }
+
+    if (Array.isArray(block.content)) {
+      return block.content.map((inner) => extractTextFromContentBlock(inner)).join("\n");
+    }
+  }
+
+  if (block.type === "tool_use") {
+    return [block.name, block.input ? JSON.stringify(block.input) : ""].filter(Boolean).join(" ");
+  }
+
+  return "";
+}
+
+function messageToSearchText(message: ConversationMessage): string {
+  if (message.summary) {
+    return message.summary;
+  }
+
+  const content = message.message?.content;
+  if (!content) {
+    return "";
+  }
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content.map((block) => extractTextFromContentBlock(block)).join("\n");
+}
+
 const CLAUDE_PROVIDER: SessionProvider = "claude";
 const SESSION_ID_SEPARATOR = ":";
 
@@ -820,6 +863,39 @@ export async function getProjects(provider: SessionProvider | "all" = "all"): Pr
   }
 
   return [...projects].sort();
+}
+
+export async function searchSessions(
+  query: string,
+  provider: SessionProvider | "all" = "all",
+): Promise<Session[]> {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return getSessions(provider);
+  }
+
+  const sessions = await getSessions(provider);
+  const directMatches: Session[] = [];
+  const unresolved: Session[] = [];
+
+  for (const session of sessions) {
+    const haystack = `${session.display}\n${session.projectName}\n${session.project}`.toLowerCase();
+    if (haystack.includes(normalizedQuery)) {
+      directMatches.push(session);
+      continue;
+    }
+    unresolved.push(session);
+  }
+
+  const transcriptMatches = await Promise.all(
+    unresolved.map(async (session) => {
+      const messages = await getConversation(session.id);
+      const text = messages.map((message) => messageToSearchText(message)).join("\n").toLowerCase();
+      return text.includes(normalizedQuery) ? session : null;
+    }),
+  );
+
+  return sortSessions([...directMatches, ...transcriptMatches.filter((s): s is Session => s !== null)]);
 }
 
 async function getClaudeConversation(sourceId: string): Promise<ConversationMessage[]> {

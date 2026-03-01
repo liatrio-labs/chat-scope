@@ -10,6 +10,7 @@ import {
   getClaudeDir,
   getSessions,
   getProjects,
+  searchSessions,
   getConversation,
   getConversationStream,
   isClaudeSessionId,
@@ -78,6 +79,13 @@ export function createServer(options: ServerOptions) {
     const provider = normalizeProvider(c.req.query("provider"));
     const projects = await getProjects(provider);
     return c.json(projects);
+  });
+
+  app.get("/api/sessions/search", async (c) => {
+    const provider = normalizeProvider(c.req.query("provider"));
+    const query = c.req.query("query") ?? "";
+    const sessions = await searchSessions(query, provider);
+    return c.json(sessions);
   });
 
   app.get("/api/sessions/stream", async (c) => {

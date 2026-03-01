@@ -58,6 +58,8 @@ type ProviderFilter = SessionProvider | "all";
 
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [searchResults, setSearchResults] = useState<Session[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -94,6 +96,7 @@ function App() {
 
   const fetchSessions = useCallback((provider: ProviderFilter) => {
     setLoading(true);
+    setSearchResults(null);
     fetch(`/api/sessions?provider=${provider}`)
       .then((res) => res.json())
       .then((data: Session[]) => {
@@ -111,6 +114,37 @@ function App() {
     fetchProjects(selectedProvider);
     fetchSessions(selectedProvider);
   }, [fetchProjects, fetchSessions, selectedProvider]);
+
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim();
+    if (!normalizedQuery) {
+      setSearchResults(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      fetch(
+        `/api/sessions/search?provider=${selectedProvider}&query=${encodeURIComponent(normalizedQuery)}`,
+        { signal: controller.signal },
+      )
+        .then((res) => res.json())
+        .then((data: Session[]) => {
+          setSearchResults(data);
+        })
+        .catch((error: unknown) => {
+          if ((error as { name?: string }).name === "AbortError") {
+            return;
+          }
+          setSearchResults([]);
+        });
+    }, 150);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchQuery, selectedProvider]);
 
   const handleSessionsFull = useCallback((event: MessageEvent) => {
     const data: Session[] = JSON.parse(event.data);
@@ -151,7 +185,7 @@ function App() {
   });
 
   const filteredSessions = useMemo(() => {
-    let filtered = sessions;
+    let filtered = searchResults ?? sessions;
     if (selectedProvider !== "all") {
       filtered = filtered.filter((s) => s.provider === selectedProvider);
     }
@@ -161,7 +195,7 @@ function App() {
     }
 
     return filtered;
-  }, [selectedProject, selectedProvider, sessions]);
+  }, [searchResults, selectedProject, selectedProvider, sessions]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -218,6 +252,8 @@ function App() {
           </div>
           <SessionList
             sessions={filteredSessions}
+            search={searchQuery}
+            onSearchChange={setSearchQuery}
             selectedSession={selectedSession}
             onSelectSession={handleSelectSession}
             loading={loading}

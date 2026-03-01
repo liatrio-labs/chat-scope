@@ -1,34 +1,23 @@
-import { useState, useMemo, memo, useRef } from "react";
+import { memo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Session } from "@claude-run/api";
 import { formatTime } from "../utils";
 
 interface SessionListProps {
   sessions: Session[];
+  search: string;
+  onSearchChange: (value: string) => void;
   selectedSession: string | null;
   onSelectSession: (sessionId: string) => void;
   loading?: boolean;
 }
 
 const SessionList = memo(function SessionList(props: SessionListProps) {
-  const { sessions, selectedSession, onSelectSession, loading } = props;
-  const [search, setSearch] = useState("");
+  const { sessions, search, onSearchChange, selectedSession, onSelectSession, loading } = props;
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const filteredSessions = useMemo(() => {
-    if (!search.trim()) {
-      return sessions;
-    }
-    const query = search.toLowerCase();
-    return sessions.filter(
-      (s) =>
-        s.display.toLowerCase().includes(query) ||
-        s.projectName.toLowerCase().includes(query)
-    );
-  }, [sessions, search]);
-
   const virtualizer = useVirtualizer({
-    count: filteredSessions.length,
+    count: sessions.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 76,
     overscan: 10,
@@ -55,13 +44,13 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search..."
             className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
           />
           {search && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => onSearchChange("")}
               className="text-zinc-600 hover:text-zinc-400 transition-colors"
             >
               <svg
@@ -105,7 +94,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
               />
             </svg>
           </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <p className="py-8 text-center text-xs text-zinc-600">
             {search ? "No sessions match" : "No sessions found"}
           </p>
@@ -118,7 +107,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
             }}
           >
             {virtualizer.getVirtualItems().map((virtualItem) => {
-              const session = filteredSessions[virtualItem.index];
+              const session = sessions[virtualItem.index];
               return (
                 <button
                   key={session.id}
