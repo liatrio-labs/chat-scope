@@ -60,6 +60,7 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [searchResults, setSearchResults] = useState<Session[] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -97,6 +98,7 @@ function App() {
   const fetchSessions = useCallback((provider: ProviderFilter) => {
     setLoading(true);
     setSearchResults(null);
+    setSearching(false);
     fetch(`/api/sessions?provider=${provider}`)
       .then((res) => res.json())
       .then((data: Session[]) => {
@@ -119,9 +121,11 @@ function App() {
     const normalizedQuery = searchQuery.trim();
     if (!normalizedQuery) {
       setSearchResults(null);
+      setSearching(false);
       return;
     }
 
+    setSearching(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       fetch(
@@ -131,18 +135,21 @@ function App() {
         .then((res) => res.json())
         .then((data: Session[]) => {
           setSearchResults(data);
+          setSearching(false);
         })
         .catch((error: unknown) => {
           if ((error as { name?: string }).name === "AbortError") {
             return;
           }
           setSearchResults([]);
+          setSearching(false);
         });
     }, 150);
 
     return () => {
       clearTimeout(timeout);
       controller.abort();
+      setSearching(false);
     };
   }, [searchQuery, selectedProvider]);
 
@@ -253,6 +260,7 @@ function App() {
           <SessionList
             sessions={filteredSessions}
             search={searchQuery}
+            searching={searching}
             onSearchChange={setSearchQuery}
             selectedSession={selectedSession}
             onSelectSession={handleSelectSession}
@@ -286,6 +294,7 @@ function App() {
               <SessionView
                 sessionId={selectedSession}
                 provider={selectedSessionData.provider}
+                searchQuery={searchQuery}
               />
             ) : null
           ) : (

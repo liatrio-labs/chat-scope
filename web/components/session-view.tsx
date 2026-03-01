@@ -11,10 +11,11 @@ const SCROLL_THRESHOLD_PX = 100;
 interface SessionViewProps {
   sessionId: string;
   provider: SessionProvider;
+  searchQuery?: string;
 }
 
 function SessionView(props: SessionViewProps) {
-  const { sessionId, provider } = props;
+  const { sessionId, provider, searchQuery } = props;
 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,6 +151,90 @@ function SessionView(props: SessionViewProps) {
   const conversationMessages = messages.filter(
     (m) => m.type === "user" || m.type === "assistant"
   );
+
+  useEffect(() => {
+    const root = containerRef.current;
+    const query = searchQuery?.trim();
+    if (!root) {
+      return;
+    }
+
+    const unwrapMarks = () => {
+      const marks = root.querySelectorAll("mark[data-search-highlight='1']");
+      for (const mark of marks) {
+        const parent = mark.parentNode;
+        if (!parent) {
+          continue;
+        }
+        const text = document.createTextNode(mark.textContent ?? "");
+        parent.replaceChild(text, mark);
+        parent.normalize();
+      }
+    };
+
+    unwrapMarks();
+
+    if (!query) {
+      return;
+    }
+
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matcher = new RegExp(escaped, "gi");
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+
+    while (walker.nextNode()) {
+      const current = walker.currentNode as Text;
+      const value = current.nodeValue ?? "";
+      if (!value.trim()) {
+        continue;
+      }
+      if (current.parentElement?.closest("mark[data-search-highlight='1']")) {
+        continue;
+      }
+      textNodes.push(current);
+    }
+
+    for (const node of textNodes) {
+      const original = node.nodeValue ?? "";
+      matcher.lastIndex = 0;
+      const matches = [...original.matchAll(matcher)];
+      if (matches.length === 0) {
+        continue;
+      }
+
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+
+      for (const match of matches) {
+        const index = match.index ?? -1;
+        if (index < 0) {
+          continue;
+        }
+
+        if (index > cursor) {
+          fragment.appendChild(document.createTextNode(original.slice(cursor, index)));
+        }
+
+        const mark = document.createElement("mark");
+        mark.setAttribute("data-search-highlight", "1");
+        mark.className = "bg-amber-300/80 text-zinc-950 px-0.5 rounded-sm";
+        mark.textContent = original.slice(index, index + match[0].length);
+        fragment.appendChild(mark);
+        cursor = index + match[0].length;
+      }
+
+      if (cursor < original.length) {
+        fragment.appendChild(document.createTextNode(original.slice(cursor)));
+      }
+
+      node.parentNode?.replaceChild(fragment, node);
+    }
+
+    return () => {
+      unwrapMarks();
+    };
+  }, [conversationMessages, searchQuery, summary]);
 
   if (loading) {
     return (

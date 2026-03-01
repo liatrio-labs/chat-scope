@@ -6,6 +6,7 @@ import { formatTime } from "../utils";
 interface SessionListProps {
   sessions: Session[];
   search: string;
+  searching?: boolean;
   onSearchChange: (value: string) => void;
   selectedSession: string | null;
   onSelectSession: (sessionId: string) => void;
@@ -13,7 +14,8 @@ interface SessionListProps {
 }
 
 const SessionList = memo(function SessionList(props: SessionListProps) {
-  const { sessions, search, onSearchChange, selectedSession, onSelectSession, loading } = props;
+  const { sessions, search, searching, onSearchChange, selectedSession, onSelectSession, loading } =
+    props;
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -67,6 +69,28 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
                 />
               </svg>
             </button>
+          )}
+          {searching && (
+            <svg
+              className="w-4 h-4 text-zinc-500 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-label="Searching"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
           )}
         </div>
       </div>
