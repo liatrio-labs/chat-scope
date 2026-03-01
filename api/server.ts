@@ -57,6 +57,7 @@ export interface ServerOptions {
 
 interface SessionSearchResponse {
   sessions: Awaited<ReturnType<typeof getSessions>>;
+  hitsBySessionId: Record<string, number>;
   status: IndexStatus;
   query: string;
 }
@@ -97,13 +98,17 @@ export function createServer(options: ServerOptions) {
     const query = c.req.query("query") ?? "";
 
     let sessions = await getSessions(provider);
+    const hitsBySessionId: Record<string, number> = {};
     const normalizedQuery = query.trim();
     const status = getIndexStatus();
 
     if (normalizedQuery) {
-      const matchIds = searchIndex(normalizedQuery, provider);
+      const matches = searchIndex(normalizedQuery, provider);
       if (status.state === "ready") {
-        const matchIdSet = new Set(matchIds);
+        const matchIdSet = new Set(matches.map((match) => match.sessionId));
+        for (const match of matches) {
+          hitsBySessionId[match.sessionId] = match.hitCount;
+        }
         sessions = sessions.filter((session) => matchIdSet.has(session.id));
       } else {
         sessions = [];
@@ -112,6 +117,7 @@ export function createServer(options: ServerOptions) {
 
     const response: SessionSearchResponse = {
       sessions,
+      hitsBySessionId,
       status,
       query: normalizedQuery,
     };

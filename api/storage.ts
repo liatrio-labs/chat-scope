@@ -4,7 +4,11 @@ import { homedir } from "os";
 import { createInterface } from "readline";
 
 export type SessionProvider = "claude" | "codex" | "opencode";
-export const SESSION_PROVIDERS: SessionProvider[] = ["claude", "codex", "opencode"];
+export const SESSION_PROVIDERS: SessionProvider[] = [
+  "claude",
+  "codex",
+  "opencode",
+];
 
 export interface HistoryEntry {
   display: string;
@@ -21,6 +25,7 @@ export interface Session {
   timestamp: number;
   project: string;
   projectName: string;
+  transcriptPath?: string;
   canResume: boolean;
 }
 
@@ -78,12 +83,16 @@ function extractTextFromContentBlock(block: ContentBlock): string {
     }
 
     if (Array.isArray(block.content)) {
-      return block.content.map((inner) => extractTextFromContentBlock(inner)).join("\n");
+      return block.content
+        .map((inner) => extractTextFromContentBlock(inner))
+        .join("\n");
     }
   }
 
   if (block.type === "tool_use") {
-    return [block.name, block.input ? JSON.stringify(block.input) : ""].filter(Boolean).join(" ");
+    return [block.name, block.input ? JSON.stringify(block.input) : ""]
+      .filter(Boolean)
+      .join(" ");
   }
 
   return "";
@@ -112,7 +121,13 @@ const SESSION_ID_SEPARATOR = ":";
 let claudeDir = join(homedir(), ".claude");
 let projectsDir = join(claudeDir, "projects");
 let codexSessionsDir = join(homedir(), ".codex", "sessions");
-let openCodeStorageDir = join(homedir(), ".local", "share", "opencode", "storage");
+let openCodeStorageDir = join(
+  homedir(),
+  ".local",
+  "share",
+  "opencode",
+  "storage",
+);
 
 const openCodeSessionDir = () => join(openCodeStorageDir, "session");
 const openCodeMessageDir = () => join(openCodeStorageDir, "message");
@@ -127,7 +142,13 @@ export function initStorage(dir?: string): void {
   claudeDir = dir ?? join(homedir(), ".claude");
   projectsDir = join(claudeDir, "projects");
   codexSessionsDir = join(homedir(), ".codex", "sessions");
-  openCodeStorageDir = join(homedir(), ".local", "share", "opencode", "storage");
+  openCodeStorageDir = join(
+    homedir(),
+    ".local",
+    "share",
+    "opencode",
+    "storage",
+  );
 }
 
 export function getClaudeDir(): string {
@@ -142,11 +163,17 @@ export function addToFileIndex(sessionId: string, filePath: string): void {
   claudeFileIndex.set(sessionId, filePath);
 }
 
-export function createSessionId(provider: SessionProvider, sourceId: string): string {
+export function createSessionId(
+  provider: SessionProvider,
+  sourceId: string,
+): string {
   return `${provider}${SESSION_ID_SEPARATOR}${sourceId}`;
 }
 
-function parseSessionId(sessionId: string): { provider: SessionProvider; sourceId: string } {
+function parseSessionId(sessionId: string): {
+  provider: SessionProvider;
+  sourceId: string;
+} {
   const separatorIndex = sessionId.indexOf(SESSION_ID_SEPARATOR);
   if (separatorIndex > 0) {
     const providerCandidate = sessionId.slice(0, separatorIndex);
@@ -176,7 +203,9 @@ function getProjectName(projectPath: string): string {
   return parts[parts.length - 1] || projectPath;
 }
 
-function getProviderFromQuery(provider?: string | null): SessionProvider | "all" {
+function getProviderFromQuery(
+  provider?: string | null,
+): SessionProvider | "all" {
   if (!provider || provider === "all") {
     return "all";
   }
@@ -188,7 +217,9 @@ function getProviderFromQuery(provider?: string | null): SessionProvider | "all"
   return "all";
 }
 
-export function normalizeProvider(provider?: string | null): SessionProvider | "all" {
+export function normalizeProvider(
+  provider?: string | null,
+): SessionProvider | "all" {
   return getProviderFromQuery(provider);
 }
 
@@ -393,7 +424,9 @@ interface CodexRecord {
 }
 
 async function getCodexSessionFiles(): Promise<string[]> {
-  return getFilesRecursively(codexSessionsDir, (filePath) => filePath.endsWith(".jsonl"));
+  return getFilesRecursively(codexSessionsDir, (filePath) =>
+    filePath.endsWith(".jsonl"),
+  );
 }
 
 function parseCodexTimestamp(value?: string): number {
@@ -405,7 +438,9 @@ function parseCodexTimestamp(value?: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getTextFromCodexContent(content: Array<{ type?: string; text?: string }> | undefined): string {
+function getTextFromCodexContent(
+  content: Array<{ type?: string; text?: string }> | undefined,
+): string {
   if (!content || content.length === 0) {
     return "";
   }
@@ -473,6 +508,7 @@ async function getCodexSessions(): Promise<Session[]> {
           timestamp: parseCodexTimestamp(meta.timestamp),
           project: projectPath,
           projectName: projectPath ? getProjectName(projectPath) : "Unknown",
+          transcriptPath: filePath,
           canResume: false,
         });
       } catch {
@@ -529,7 +565,9 @@ function createSimpleMessage(
   };
 }
 
-async function getCodexConversation(sourceId: string): Promise<ConversationMessage[]> {
+async function getCodexConversation(
+  sourceId: string,
+): Promise<ConversationMessage[]> {
   const filePath = await findCodexSessionFile(sourceId);
   if (!filePath) {
     return [];
@@ -566,7 +604,9 @@ async function getCodexConversation(sourceId: string): Promise<ConversationMessa
         continue;
       }
 
-      messages.push(createSimpleMessage(role, text, record.payload.id, record.timestamp));
+      messages.push(
+        createSimpleMessage(role, text, record.payload.id, record.timestamp),
+      );
     }
 
     return messages;
@@ -622,7 +662,9 @@ function toIsoTimestamp(timestampMs?: number): string | undefined {
   return new Date(timestampMs).toISOString();
 }
 
-function normalizeToolInput(input: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+function normalizeToolInput(
+  input: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
   if (!input) {
     return undefined;
   }
@@ -664,7 +706,9 @@ function stringifyToolOutput(output: unknown): string {
 }
 
 async function getOpenCodeSessionFiles(): Promise<string[]> {
-  return getFilesRecursively(openCodeSessionDir(), (filePath) => filePath.endsWith(".json"));
+  return getFilesRecursively(openCodeSessionDir(), (filePath) =>
+    filePath.endsWith(".json"),
+  );
 }
 
 async function getOpenCodeSessions(): Promise<Session[]> {
@@ -679,7 +723,8 @@ async function getOpenCodeSessions(): Promise<Session[]> {
       }
 
       const projectPath = sessionFile.directory ?? "";
-      const timestamp = sessionFile.time?.updated ?? sessionFile.time?.created ?? 0;
+      const timestamp =
+        sessionFile.time?.updated ?? sessionFile.time?.created ?? 0;
 
       sessions.push({
         id: createSessionId("opencode", sessionFile.id),
@@ -689,6 +734,7 @@ async function getOpenCodeSessions(): Promise<Session[]> {
         timestamp,
         project: projectPath,
         projectName: projectPath ? getProjectName(projectPath) : "Unknown",
+        transcriptPath: filePath,
         canResume: false,
       });
     }),
@@ -697,22 +743,34 @@ async function getOpenCodeSessions(): Promise<Session[]> {
   return sessions;
 }
 
-async function getOpenCodeMessages(sourceId: string): Promise<OpenCodeMessageFile[]> {
+async function getOpenCodeMessages(
+  sourceId: string,
+): Promise<OpenCodeMessageFile[]> {
   const messageDir = join(openCodeMessageDir(), sourceId);
-  const files = await getFilesRecursively(messageDir, (filePath) => filePath.endsWith(".json"));
+  const files = await getFilesRecursively(messageDir, (filePath) =>
+    filePath.endsWith(".json"),
+  );
 
-  const messages = await Promise.all(files.map(async (filePath) => readJsonFile<OpenCodeMessageFile>(filePath)));
+  const messages = await Promise.all(
+    files.map(async (filePath) => readJsonFile<OpenCodeMessageFile>(filePath)),
+  );
 
   return messages
     .filter((m): m is OpenCodeMessageFile => Boolean(m?.id))
     .sort((a, b) => (a.time?.created ?? 0) - (b.time?.created ?? 0));
 }
 
-async function getOpenCodeMessageParts(messageId: string): Promise<OpenCodePartFile[]> {
+async function getOpenCodeMessageParts(
+  messageId: string,
+): Promise<OpenCodePartFile[]> {
   const partDir = join(openCodePartDir(), messageId);
-  const files = await getFilesRecursively(partDir, (filePath) => filePath.endsWith(".json"));
+  const files = await getFilesRecursively(partDir, (filePath) =>
+    filePath.endsWith(".json"),
+  );
 
-  const parts = await Promise.all(files.map(async (filePath) => readJsonFile<OpenCodePartFile>(filePath)));
+  const parts = await Promise.all(
+    files.map(async (filePath) => readJsonFile<OpenCodePartFile>(filePath)),
+  );
 
   return parts
     .filter((p): p is OpenCodePartFile => Boolean(p?.id && p?.type))
@@ -757,12 +815,19 @@ function partsToContentBlocks(parts: OpenCodePartFile[]): ContentBlock[] {
   return blocks;
 }
 
-async function getOpenCodeConversation(sourceId: string): Promise<ConversationMessage[]> {
+async function getOpenCodeConversation(
+  sourceId: string,
+): Promise<ConversationMessage[]> {
   const messages = await getOpenCodeMessages(sourceId);
   const conversation: ConversationMessage[] = [];
 
   for (const message of messages) {
-    const role = message.role === "assistant" ? "assistant" : message.role === "user" ? "user" : null;
+    const role =
+      message.role === "assistant"
+        ? "assistant"
+        : message.role === "user"
+          ? "user"
+          : null;
     if (!role) {
       continue;
     }
@@ -803,7 +868,10 @@ async function getClaudeSessions(): Promise<Session[]> {
     let sourceId = entry.sessionId;
     if (!sourceId) {
       const encodedProject = encodeProjectPath(entry.project);
-      sourceId = await findClaudeSessionByTimestamp(encodedProject, entry.timestamp);
+      sourceId = await findClaudeSessionByTimestamp(
+        encodedProject,
+        entry.timestamp,
+      );
     }
 
     if (!sourceId || seenIds.has(sourceId)) {
@@ -819,6 +887,7 @@ async function getClaudeSessions(): Promise<Session[]> {
       timestamp: entry.timestamp,
       project: entry.project,
       projectName: getProjectName(entry.project),
+      transcriptPath: claudeFileIndex.get(sourceId),
       canResume: true,
     });
   }
@@ -830,7 +899,9 @@ function sortSessions(sessions: Session[]): Session[] {
   return sessions.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export async function getSessions(provider: SessionProvider | "all" = "all"): Promise<Session[]> {
+export async function getSessions(
+  provider: SessionProvider | "all" = "all",
+): Promise<Session[]> {
   return dedupe(`getSessions:${provider}`, async () => {
     const providers = provider === "all" ? SESSION_PROVIDERS : [provider];
     const collections = await Promise.all(
@@ -852,7 +923,9 @@ export async function getSessions(provider: SessionProvider | "all" = "all"): Pr
   });
 }
 
-export async function getProjects(provider: SessionProvider | "all" = "all"): Promise<string[]> {
+export async function getProjects(
+  provider: SessionProvider | "all" = "all",
+): Promise<string[]> {
   const sessions = await getSessions(provider);
   const projects = new Set<string>();
 
@@ -879,7 +952,8 @@ export async function searchSessions(
   const unresolved: Session[] = [];
 
   for (const session of sessions) {
-    const haystack = `${session.display}\n${session.projectName}\n${session.project}`.toLowerCase();
+    const haystack =
+      `${session.display}\n${session.projectName}\n${session.project}`.toLowerCase();
     if (haystack.includes(normalizedQuery)) {
       directMatches.push(session);
       continue;
@@ -890,15 +964,23 @@ export async function searchSessions(
   const transcriptMatches = await Promise.all(
     unresolved.map(async (session) => {
       const messages = await getConversation(session.id);
-      const text = messages.map((message) => messageToSearchText(message)).join("\n").toLowerCase();
+      const text = messages
+        .map((message) => messageToSearchText(message))
+        .join("\n")
+        .toLowerCase();
       return text.includes(normalizedQuery) ? session : null;
     }),
   );
 
-  return sortSessions([...directMatches, ...transcriptMatches.filter((s): s is Session => s !== null)]);
+  return sortSessions([
+    ...directMatches,
+    ...transcriptMatches.filter((s): s is Session => s !== null),
+  ]);
 }
 
-async function getClaudeConversation(sourceId: string): Promise<ConversationMessage[]> {
+async function getClaudeConversation(
+  sourceId: string,
+): Promise<ConversationMessage[]> {
   const filePath = await findClaudeSessionFile(sourceId);
 
   if (!filePath) {
@@ -930,7 +1012,9 @@ async function getClaudeConversation(sourceId: string): Promise<ConversationMess
   return messages;
 }
 
-export async function getConversation(sessionId: string): Promise<ConversationMessage[]> {
+export async function getConversation(
+  sessionId: string,
+): Promise<ConversationMessage[]> {
   const { provider, sourceId } = parseSessionId(sessionId);
 
   return dedupe(`getConversation:${provider}:${sourceId}`, async () => {

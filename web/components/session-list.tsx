@@ -27,6 +27,7 @@ interface SessionListProps {
   search: string;
   searching?: boolean;
   onSearchChange: (value: string) => void;
+  searchHitsBySessionId: Record<string, number>;
   indexStatus: IndexStatus;
   onRefreshIndex: () => void | Promise<void>;
   selectedSession: string | null;
@@ -40,6 +41,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
     search,
     searching,
     onSearchChange,
+    searchHitsBySessionId,
     indexStatus,
     onRefreshIndex,
     selectedSession,
@@ -243,6 +245,15 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
                       {formatTime(session.timestamp)}
                     </span>
                   </div>
+                  {search.trim().length > 0 &&
+                    searchHitsBySessionId[session.id] > 0 && (
+                      <div className="mb-1">
+                        <span className="inline-flex rounded-md border border-cyan-500/30 bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-200">
+                          {searchHitsBySessionId[session.id]} hit
+                          {searchHitsBySessionId[session.id] !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    )}
                   <p className="text-[12px] text-zinc-300 leading-snug line-clamp-2 break-words">
                     {session.display}
                   </p>

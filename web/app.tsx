@@ -9,27 +9,38 @@ import { useEventSource } from "./hooks/use-event-source";
 interface SessionHeaderProps {
   session: Session;
   copied: boolean;
+  showTranscriptPath: boolean;
   onCopyResumeCommand: (sourceId: string, projectPath: string) => void;
 }
 
 function SessionHeader(props: SessionHeaderProps) {
-  const { session, copied, onCopyResumeCommand } = props;
+  const { session, copied, showTranscriptPath, onCopyResumeCommand } = props;
 
   return (
     <>
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className="text-sm text-zinc-300 truncate max-w-xs">
-          {session.display}
-        </span>
-        <span className="text-xs text-zinc-500 shrink-0 uppercase tracking-wide">
-          {session.provider}
-        </span>
-        <span className="text-xs text-zinc-600 shrink-0">
-          {session.projectName}
-        </span>
-        <span className="text-xs text-zinc-600 shrink-0">
-          {formatTime(session.timestamp)}
-        </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-sm text-zinc-300 truncate max-w-xs">
+            {session.display}
+          </span>
+          <span className="text-xs text-zinc-500 shrink-0 uppercase tracking-wide">
+            {session.provider}
+          </span>
+          <span className="text-xs text-zinc-600 shrink-0">
+            {session.projectName}
+          </span>
+          <span className="text-xs text-zinc-600 shrink-0">
+            {formatTime(session.timestamp)}
+          </span>
+        </div>
+        {showTranscriptPath && (
+          <div
+            className="mt-1 text-[11px] text-zinc-500 truncate font-mono"
+            title={session.transcriptPath || "Path unavailable"}
+          >
+            {session.transcriptPath || "Path unavailable"}
+          </div>
+        )}
       </div>
       {session.canResume && (
         <button
@@ -80,6 +91,7 @@ interface IndexStatus {
 
 interface SessionSearchResponse {
   sessions: Session[];
+  hitsBySessionId: Record<string, number>;
   status: IndexStatus;
   query: string;
 }
@@ -104,6 +116,9 @@ const DEFAULT_INDEX_STATUS: IndexStatus = {
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [searchResults, setSearchResults] = useState<Session[] | null>(null);
+  const [searchHitsBySessionId, setSearchHitsBySessionId] = useState<
+    Record<string, number>
+  >({});
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [indexStatus, setIndexStatus] =
@@ -170,6 +185,7 @@ function App() {
 
       const data = (await response.json()) as SessionSearchResponse;
       setSearchResults(data.sessions);
+      setSearchHitsBySessionId(data.hitsBySessionId || {});
       setIndexStatus(data.status);
     },
     [],
@@ -195,6 +211,7 @@ function App() {
   const fetchSessions = useCallback((provider: ProviderFilter) => {
     setLoading(true);
     setSearchResults(null);
+    setSearchHitsBySessionId({});
     setSearching(false);
     fetch(`/api/sessions?provider=${provider}`)
       .then((res) => res.json())
@@ -219,6 +236,7 @@ function App() {
     const normalizedQuery = searchQuery.trim();
     if (!normalizedQuery) {
       setSearchResults(null);
+      setSearchHitsBySessionId({});
       setSearching(false);
       return;
     }
@@ -236,6 +254,7 @@ function App() {
             return;
           }
           setSearchResults([]);
+          setSearchHitsBySessionId({});
           setSearching(false);
         });
     }, 150);
@@ -422,6 +441,7 @@ function App() {
             search={searchQuery}
             searching={searching}
             onSearchChange={setSearchQuery}
+            searchHitsBySessionId={searchHitsBySessionId}
             indexStatus={indexStatus}
             onRefreshIndex={triggerIndexRefresh}
             selectedSession={selectedSession}
@@ -446,6 +466,7 @@ function App() {
             <SessionHeader
               session={selectedSessionData}
               copied={copied}
+              showTranscriptPath={Boolean(searchQuery.trim())}
               onCopyResumeCommand={handleCopyResumeCommand}
             />
           )}

@@ -37,6 +37,11 @@ interface IndexedDocument {
   text: string;
 }
 
+export interface SearchMatch {
+  sessionId: string;
+  hitCount: number;
+}
+
 const documents = new Map<string, IndexedDocument>();
 
 let status: IndexStatus = {
@@ -216,20 +221,41 @@ export function getIndexStatus(): IndexStatus {
 export function searchIndex(
   query: string,
   provider: SessionProvider | "all" = "all",
-): string[] {
+): SearchMatch[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery || status.state !== "ready") {
     return [];
   }
 
-  const matches: string[] = [];
+  const matches: SearchMatch[] = [];
+
+  const countOccurrences = (text: string, needle: string): number => {
+    if (!needle) {
+      return 0;
+    }
+
+    let count = 0;
+    let fromIndex = 0;
+    while (fromIndex <= text.length - needle.length) {
+      const index = text.indexOf(needle, fromIndex);
+      if (index === -1) {
+        break;
+      }
+      count += 1;
+      fromIndex = index + needle.length;
+    }
+
+    return count;
+  };
+
   for (const document of documents.values()) {
     if (provider !== "all" && document.provider !== provider) {
       continue;
     }
 
-    if (document.text.includes(normalizedQuery)) {
-      matches.push(document.sessionId);
+    const hitCount = countOccurrences(document.text, normalizedQuery);
+    if (hitCount > 0) {
+      matches.push({ sessionId: document.sessionId, hitCount });
     }
   }
 
