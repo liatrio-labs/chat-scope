@@ -12,6 +12,8 @@ import {
   getProjects,
   getConversation,
   getConversationStream,
+  isClaudeSessionId,
+  normalizeProvider,
   invalidateHistoryCache,
   addToFileIndex,
 } from "./storage";
@@ -67,16 +69,24 @@ export function createServer(options: ServerOptions) {
   }
 
   app.get("/api/sessions", async (c) => {
-    const sessions = await getSessions();
+    const provider = normalizeProvider(c.req.query("provider"));
+    const sessions = await getSessions(provider);
     return c.json(sessions);
   });
 
   app.get("/api/projects", async (c) => {
-    const projects = await getProjects();
+    const provider = normalizeProvider(c.req.query("provider"));
+    const projects = await getProjects(provider);
     return c.json(projects);
   });
 
   app.get("/api/sessions/stream", async (c) => {
+    const requestedProvider = normalizeProvider(c.req.query("provider"));
+    const streamProvider =
+      requestedProvider === "all" || requestedProvider === "claude"
+        ? requestedProvider
+        : "claude";
+
     return streamSSE(c, async (stream) => {
       let isConnected = true;
       const knownSessions = new Map<string, number>();
@@ -91,7 +101,7 @@ export function createServer(options: ServerOptions) {
           return;
         }
         try {
-          const sessions = await getSessions();
+          const sessions = await getSessions(streamProvider);
           const newOrUpdated = sessions.filter((s) => {
             const known = knownSessions.get(s.id);
             return known === undefined || known !== s.timestamp;
@@ -116,7 +126,7 @@ export function createServer(options: ServerOptions) {
       c.req.raw.signal.addEventListener("abort", cleanup);
 
       try {
-        const sessions = await getSessions();
+        const sessions = await getSessions(streamProvider);
         for (const s of sessions) {
           knownSessions.set(s.id, s.timestamp);
         }
@@ -149,6 +159,11 @@ export function createServer(options: ServerOptions) {
 
   app.get("/api/conversation/:id/stream", async (c) => {
     const sessionId = c.req.param("id");
+
+    if (!isClaudeSessionId(sessionId)) {
+      return c.json({ error: "Streaming is only supported for Claude sessions" }, 400);
+    }
+
     const offsetParam = c.req.query("offset");
     let offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
