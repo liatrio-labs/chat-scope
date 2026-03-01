@@ -20,8 +20,11 @@ function SessionView(props: SessionViewProps) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [matchCount, setMatchCount] = useState(0);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
+  const matchElementsRef = useRef<HTMLElement[]>([]);
   const offsetRef = useRef(0);
   const isScrollingProgrammaticallyRef = useRef(false);
   const retryCountRef = useRef(0);
@@ -43,7 +46,7 @@ function SessionView(props: SessionViewProps) {
     }
 
     const eventSource = new EventSource(
-      `/api/conversation/${sessionId}/stream?offset=${offsetRef.current}`
+      `/api/conversation/${sessionId}/stream?offset=${offsetRef.current}`,
     );
     eventSourceRef.current = eventSource;
 
@@ -71,7 +74,10 @@ function SessionView(props: SessionViewProps) {
       }
 
       if (retryCountRef.current < MAX_RETRIES) {
-        const delay = Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, retryCountRef.current), MAX_RETRY_DELAY_MS);
+        const delay = Math.min(
+          BASE_RETRY_DELAY_MS * Math.pow(2, retryCountRef.current),
+          MAX_RETRY_DELAY_MS,
+        );
         retryCountRef.current++;
         retryTimeoutRef.current = setTimeout(() => connect(), delay);
       }
@@ -80,7 +86,9 @@ function SessionView(props: SessionViewProps) {
 
   const loadStaticConversation = useCallback(async () => {
     try {
-      const response = await fetch(`/api/conversation/${encodeURIComponent(sessionId)}`);
+      const response = await fetch(
+        `/api/conversation/${encodeURIComponent(sessionId)}`,
+      );
       if (!response.ok) {
         setMessages([]);
         setLoading(false);
@@ -125,7 +133,10 @@ function SessionView(props: SessionViewProps) {
       return;
     }
     isScrollingProgrammaticallyRef.current = true;
-    lastMessageRef.current.scrollIntoView({ behavior: "instant", block: "end" });
+    lastMessageRef.current.scrollIntoView({
+      behavior: "instant",
+      block: "end",
+    });
     requestAnimationFrame(() => {
       isScrollingProgrammaticallyRef.current = false;
     });
@@ -143,14 +154,51 @@ function SessionView(props: SessionViewProps) {
     }
 
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX;
+    const isAtBottom =
+      scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX;
     setAutoScroll(isAtBottom);
   };
 
   const summary = messages.find((m) => m.type === "summary");
   const conversationMessages = messages.filter(
-    (m) => m.type === "user" || m.type === "assistant"
+    (m) => m.type === "user" || m.type === "assistant",
   );
+
+  const activateMatch = useCallback((index: number, shouldScroll: boolean) => {
+    const marks = matchElementsRef.current;
+    if (marks.length === 0) {
+      setActiveMatchIndex(-1);
+      return;
+    }
+
+    const normalizedIndex =
+      ((index % marks.length) + marks.length) % marks.length;
+
+    for (const mark of marks) {
+      mark.dataset.searchActive = "0";
+      mark.classList.remove("bg-cyan-300", "ring-1", "ring-cyan-500");
+      mark.classList.add("bg-amber-300/80");
+    }
+
+    const activeMark = marks[normalizedIndex];
+    activeMark.dataset.searchActive = "1";
+    activeMark.classList.remove("bg-amber-300/80");
+    activeMark.classList.add("bg-cyan-300", "ring-1", "ring-cyan-500");
+
+    if (shouldScroll) {
+      activeMark.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
+    setActiveMatchIndex(normalizedIndex);
+  }, []);
+
+  const goToPreviousMatch = useCallback(() => {
+    activateMatch(activeMatchIndex - 1, true);
+  }, [activateMatch, activeMatchIndex]);
+
+  const goToNextMatch = useCallback(() => {
+    activateMatch(activeMatchIndex + 1, true);
+  }, [activateMatch, activeMatchIndex]);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -170,6 +218,10 @@ function SessionView(props: SessionViewProps) {
         parent.replaceChild(text, mark);
         parent.normalize();
       }
+
+      matchElementsRef.current = [];
+      setMatchCount(0);
+      setActiveMatchIndex(-1);
     };
 
     unwrapMarks();
@@ -213,7 +265,9 @@ function SessionView(props: SessionViewProps) {
         }
 
         if (index > cursor) {
-          fragment.appendChild(document.createTextNode(original.slice(cursor, index)));
+          fragment.appendChild(
+            document.createTextNode(original.slice(cursor, index)),
+          );
         }
 
         const mark = document.createElement("mark");
@@ -231,10 +285,21 @@ function SessionView(props: SessionViewProps) {
       node.parentNode?.replaceChild(fragment, node);
     }
 
+    const marks = Array.from(
+      root.querySelectorAll("mark[data-search-highlight='1']"),
+    ) as HTMLElement[];
+
+    matchElementsRef.current = marks;
+    setMatchCount(marks.length);
+
+    if (marks.length > 0) {
+      activateMatch(0, false);
+    }
+
     return () => {
       unwrapMarks();
     };
-  }, [conversationMessages, searchQuery, summary]);
+  }, [activateMatch, conversationMessages, searchQuery, summary]);
 
   if (loading) {
     return (
@@ -251,6 +316,34 @@ function SessionView(props: SessionViewProps) {
         onScroll={handleScroll}
         className="h-full overflow-y-auto bg-zinc-950"
       >
+        {searchQuery?.trim() && (
+          <div className="sticky top-0 z-20 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur px-4 py-2">
+            <div className="mx-auto max-w-3xl flex items-center justify-between gap-3">
+              <div className="text-xs text-zinc-300">
+                {matchCount > 0
+                  ? `Matches ${activeMatchIndex + 1}/${matchCount}`
+                  : "No matches in this transcript"}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={goToPreviousMatch}
+                  disabled={matchCount === 0}
+                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={goToNextMatch}
+                  disabled={matchCount === 0}
+                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mx-auto max-w-3xl px-4 py-4">
           {summary && (
             <div className="mb-6 rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
