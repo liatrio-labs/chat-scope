@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import type { ConversationMessage, SessionProvider } from "@claude-run/api";
 import MessageBlock from "./message-block";
 import ScrollToBottomButton from "./scroll-to-bottom-button";
+import ScrollToTopButton from "./scroll-to-top-button";
 
 const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY_MS = 1000;
@@ -20,6 +21,7 @@ function SessionView(props: SessionViewProps) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [isAtTop, setIsAtTop] = useState(true);
   const [matchCount, setMatchCount] = useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,6 +110,7 @@ function SessionView(props: SessionViewProps) {
     mountedRef.current = true;
     setLoading(true);
     setMessages([]);
+    setIsAtTop(true);
     offsetRef.current = 0;
     retryCountRef.current = 0;
 
@@ -139,6 +142,24 @@ function SessionView(props: SessionViewProps) {
     });
     requestAnimationFrame(() => {
       isScrollingProgrammaticallyRef.current = false;
+      if (containerRef.current) {
+        setIsAtTop(containerRef.current.scrollTop <= SCROLL_THRESHOLD_PX);
+      }
+    });
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    isScrollingProgrammaticallyRef.current = true;
+    containerRef.current.scrollTo({ top: 0, behavior: "auto" });
+    setIsAtTop(true);
+    setAutoScroll(false);
+
+    requestAnimationFrame(() => {
+      isScrollingProgrammaticallyRef.current = false;
     });
   }, []);
 
@@ -157,6 +178,7 @@ function SessionView(props: SessionViewProps) {
     const isAtBottom =
       scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX;
     setAutoScroll(isAtBottom);
+    setIsAtTop(scrollTop <= SCROLL_THRESHOLD_PX);
   };
 
   const summary = messages.find((m) => m.type === "summary");
@@ -372,6 +394,8 @@ function SessionView(props: SessionViewProps) {
           </div>
         </div>
       </div>
+
+      {!isAtTop && <ScrollToTopButton onClick={scrollToTop} />}
 
       {!autoScroll && (
         <ScrollToBottomButton
