@@ -56,13 +56,61 @@ function SessionHeader(props: SessionHeaderProps) {
 
 type ProviderFilter = SessionProvider | "all";
 
+interface IndexStatus {
+  state: "idle" | "indexing" | "ready" | "error";
+  progress: {
+    totalSessions: number;
+    indexedSessions: number;
+    totalProviders: number;
+    completedProviders: number;
+    currentProvider?: SessionProvider;
+  };
+  counts: {
+    claude: number;
+    codex: number;
+    opencode: number;
+    total: number;
+  };
+  startedAt?: number;
+  completedAt?: number;
+  lastRefreshAt?: number;
+  lastError?: string;
+  generation: number;
+}
+
+interface SessionSearchResponse {
+  sessions: Session[];
+  status: IndexStatus;
+  query: string;
+}
+
+const DEFAULT_INDEX_STATUS: IndexStatus = {
+  state: "idle",
+  progress: {
+    totalSessions: 0,
+    indexedSessions: 0,
+    totalProviders: 3,
+    completedProviders: 0,
+  },
+  counts: {
+    claude: 0,
+    codex: 0,
+    opencode: 0,
+    total: 0,
+  },
+  generation: 0,
+};
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [searchResults, setSearchResults] = useState<Session[] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [indexStatus, setIndexStatus] =
+    useState<IndexStatus>(DEFAULT_INDEX_STATUS);
   const [projects, setProjects] = useState<string[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
+  const [selectedProvider, setSelectedProvider] =
+    useState<ProviderFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +143,55 @@ function App() {
       .catch(console.error);
   }, []);
 
+  const fetchIndexStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/index/status");
+      if (!response.ok) {
+        return null;
+      }
+      const status = (await response.json()) as IndexStatus;
+      setIndexStatus(status);
+      return status;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const runSearch = useCallback(
+    async (query: string, provider: ProviderFilter, signal?: AbortSignal) => {
+      const response = await fetch(
+        `/api/sessions/search?provider=${provider}&query=${encodeURIComponent(query)}`,
+        { signal },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Search failed with status ${response.status}`);
+      }
+
+      const data = (await response.json()) as SessionSearchResponse;
+      setSearchResults(data.sessions);
+      setIndexStatus(data.status);
+    },
+    [],
+  );
+
+  const triggerIndexRefresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/index/refresh", { method: "POST" });
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as {
+        status?: IndexStatus;
+      };
+      if (data.status) {
+        setIndexStatus(data.status);
+      }
+    } catch {
+      // Ignore refresh failures and rely on polling.
+    }
+  }, []);
+
   const fetchSessions = useCallback((provider: ProviderFilter) => {
     setLoading(true);
     setSearchResults(null);
@@ -115,7 +212,8 @@ function App() {
     setSelectedProject(null);
     fetchProjects(selectedProvider);
     fetchSessions(selectedProvider);
-  }, [fetchProjects, fetchSessions, selectedProvider]);
+    fetchIndexStatus().catch(console.error);
+  }, [fetchIndexStatus, fetchProjects, fetchSessions, selectedProvider]);
 
   useEffect(() => {
     const normalizedQuery = searchQuery.trim();
@@ -126,15 +224,11 @@ function App() {
     }
 
     setSearching(true);
+    setSearchResults([]);
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-      fetch(
-        `/api/sessions/search?provider=${selectedProvider}&query=${encodeURIComponent(normalizedQuery)}`,
-        { signal: controller.signal },
-      )
-        .then((res) => res.json())
-        .then((data: Session[]) => {
-          setSearchResults(data);
+      runSearch(normalizedQuery, selectedProvider, controller.signal)
+        .then(() => {
           setSearching(false);
         })
         .catch((error: unknown) => {
@@ -151,13 +245,75 @@ function App() {
       controller.abort();
       setSearching(false);
     };
-  }, [searchQuery, selectedProvider]);
+  }, [runSearch, searchQuery, selectedProvider]);
+
+  useEffect(() => {
+    let intervalMs = indexStatus.state === "indexing" ? 1000 : 5000;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let previousState = indexStatus.state;
+
+    const poll = async () => {
+      const nextStatus = await fetchIndexStatus();
+      if (!nextStatus) {
+        return;
+      }
+
+      const activeQuery = searchQuery.trim();
+      if (
+        previousState === "indexing" &&
+        nextStatus.state === "ready" &&
+        activeQuery.length > 0
+      ) {
+        setSearching(true);
+        try {
+          await runSearch(activeQuery, selectedProvider);
+        } catch {
+          setSearchResults([]);
+        } finally {
+          setSearching(false);
+        }
+      }
+
+      previousState = nextStatus.state;
+
+      const nextInterval = nextStatus.state === "indexing" ? 1000 : 5000;
+      if (nextInterval !== intervalMs) {
+        intervalMs = nextInterval;
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+        intervalId = setInterval(() => {
+          poll().catch(console.error);
+        }, intervalMs);
+      }
+    };
+
+    intervalId = setInterval(() => {
+      poll().catch(console.error);
+    }, intervalMs);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [
+    fetchIndexStatus,
+    indexStatus.state,
+    runSearch,
+    searchQuery,
+    selectedProvider,
+  ]);
 
   const handleSessionsFull = useCallback((event: MessageEvent) => {
     const data: Session[] = JSON.parse(event.data);
     setSessions((prev) => {
-      const nonClaudeSessions = prev.filter((session) => session.provider !== "claude");
-      return [...nonClaudeSessions, ...data].sort((a, b) => b.timestamp - a.timestamp);
+      const nonClaudeSessions = prev.filter(
+        (session) => session.provider !== "claude",
+      );
+      return [...nonClaudeSessions, ...data].sort(
+        (a, b) => b.timestamp - a.timestamp,
+      );
     });
   }, []);
 
@@ -208,7 +364,9 @@ function App() {
     if (!selectedSession) {
       return;
     }
-    const stillExists = filteredSessions.some((session) => session.id === selectedSession);
+    const stillExists = filteredSessions.some(
+      (session) => session.id === selectedSession,
+    );
     if (!stillExists) {
       setSelectedSession(null);
     }
@@ -247,7 +405,9 @@ function App() {
               <select
                 id={"select-provider"}
                 value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value as ProviderFilter)}
+                onChange={(e) =>
+                  setSelectedProvider(e.target.value as ProviderFilter)
+                }
                 className="w-full h-[42px] bg-transparent text-zinc-300 text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
               >
                 <option value="all">All Providers</option>
@@ -262,6 +422,8 @@ function App() {
             search={searchQuery}
             searching={searching}
             onSearchChange={setSearchQuery}
+            indexStatus={indexStatus}
+            onRefreshIndex={triggerIndexRefresh}
             selectedSession={selectedSession}
             onSelectSession={handleSelectSession}
             loading={loading}

@@ -10,7 +10,6 @@ import {
   getClaudeDir,
   getSessions,
   getProjects,
-  searchSessions,
   getConversation,
   getConversationStream,
   isClaudeSessionId,
@@ -18,6 +17,12 @@ import {
   invalidateHistoryCache,
   addToFileIndex,
 } from "./storage";
+import {
+  getIndexStatus,
+  searchIndex,
+  startIndexRefresh,
+  type IndexStatus,
+} from "./indexer";
 import {
   initWatcher,
   startWatcher,
@@ -48,6 +53,12 @@ export interface ServerOptions {
   claudeDir?: string;
   dev?: boolean;
   open?: boolean;
+}
+
+interface SessionSearchResponse {
+  sessions: Awaited<ReturnType<typeof getSessions>>;
+  status: IndexStatus;
+  query: string;
 }
 
 export function createServer(options: ServerOptions) {
@@ -84,8 +95,42 @@ export function createServer(options: ServerOptions) {
   app.get("/api/sessions/search", async (c) => {
     const provider = normalizeProvider(c.req.query("provider"));
     const query = c.req.query("query") ?? "";
-    const sessions = await searchSessions(query, provider);
-    return c.json(sessions);
+
+    let sessions = await getSessions(provider);
+    const normalizedQuery = query.trim();
+    const status = getIndexStatus();
+
+    if (normalizedQuery) {
+      const matchIds = searchIndex(normalizedQuery, provider);
+      if (status.state === "ready") {
+        const matchIdSet = new Set(matchIds);
+        sessions = sessions.filter((session) => matchIdSet.has(session.id));
+      } else {
+        sessions = [];
+      }
+    }
+
+    const response: SessionSearchResponse = {
+      sessions,
+      status,
+      query: normalizedQuery,
+    };
+
+    return c.json(response);
+  });
+
+  app.get("/api/index/status", (c) => {
+    return c.json(getIndexStatus());
+  });
+
+  app.post("/api/index/refresh", (c) => {
+    const alreadyIndexing = getIndexStatus().state === "indexing";
+    const status = startIndexRefresh();
+    return c.json({
+      accepted: !alreadyIndexing,
+      generation: status.generation,
+      status,
+    });
   });
 
   app.get("/api/sessions/stream", async (c) => {
@@ -169,7 +214,10 @@ export function createServer(options: ServerOptions) {
     const sessionId = c.req.param("id");
 
     if (!isClaudeSessionId(sessionId)) {
-      return c.json({ error: "Streaming is only supported for Claude sessions" }, 400);
+      return c.json(
+        { error: "Streaming is only supported for Claude sessions" },
+        400,
+      );
     }
 
     const offsetParam = c.req.query("offset");
@@ -265,6 +313,7 @@ export function createServer(options: ServerOptions) {
     port,
     start: async () => {
       await loadStorage();
+      startIndexRefresh();
       const openUrl = `http://localhost:${dev ? 12000 : port}/`;
 
       console.log(`\n  claude-run is running at ${openUrl}\n`);
