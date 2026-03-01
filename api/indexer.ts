@@ -73,38 +73,8 @@ function extractTextFromMessage(message: ConversationMessage): string {
   }
 
   return content
-    .map((block) => {
-      if (block.type === "text") {
-        return block.text ?? "";
-      }
-      if (block.type === "thinking") {
-        return block.thinking ?? "";
-      }
-      if (block.type === "tool_use") {
-        return [block.name, block.input ? JSON.stringify(block.input) : ""]
-          .filter(Boolean)
-          .join(" ");
-      }
-      if (block.type === "tool_result") {
-        if (typeof block.content === "string") {
-          return block.content;
-        }
-        if (Array.isArray(block.content)) {
-          return block.content
-            .map((inner) => {
-              if (inner.type === "text") {
-                return inner.text ?? "";
-              }
-              if (inner.type === "thinking") {
-                return inner.thinking ?? "";
-              }
-              return "";
-            })
-            .join("\n");
-        }
-      }
-      return "";
-    })
+    .filter((block) => block.type === "text")
+    .map((block) => block.text ?? "")
     .join("\n");
 }
 
