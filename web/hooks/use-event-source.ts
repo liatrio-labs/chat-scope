@@ -12,7 +12,7 @@ interface UseEventSourceOptions {
   baseDelay?: number;
 }
 
-export function useEventSource(url: string, options: UseEventSourceOptions) {
+export function useEventSource(url: string | null, options: UseEventSourceOptions) {
   const { events, onError, maxRetries = 10, baseDelay = 1000 } = options;
 
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -23,6 +23,10 @@ export function useEventSource(url: string, options: UseEventSourceOptions) {
   eventsRef.current = events;
 
   const connect = useCallback(() => {
+    if (!url) {
+      return;
+    }
+
     if (!mountedRef.current) {
       return;
     }
@@ -66,7 +70,9 @@ export function useEventSource(url: string, options: UseEventSourceOptions) {
 
   useEffect(() => {
     mountedRef.current = true;
-    connect();
+    if (url) {
+      connect();
+    }
 
     return () => {
       mountedRef.current = false;
@@ -79,5 +85,5 @@ export function useEventSource(url: string, options: UseEventSourceOptions) {
         eventSourceRef.current.close();
       }
     };
-  }, [connect]);
+  }, [connect, url]);
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import type { ConversationMessage } from "@claude-run/api";
+import type { ConversationMessage, SessionProvider } from "@claude-run/api";
 import MessageBlock from "./message-block";
 import ScrollToBottomButton from "./scroll-to-bottom-button";
 
@@ -10,10 +10,11 @@ const SCROLL_THRESHOLD_PX = 100;
 
 interface SessionViewProps {
   sessionId: string;
+  provider: SessionProvider;
 }
 
 function SessionView(props: SessionViewProps) {
-  const { sessionId } = props;
+  const { sessionId, provider } = props;
 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,10 @@ function SessionView(props: SessionViewProps) {
   const mountedRef = useRef(true);
 
   const connect = useCallback(() => {
+    if (provider !== "claude") {
+      return;
+    }
+
     if (!mountedRef.current) {
       return;
     }
@@ -70,6 +75,24 @@ function SessionView(props: SessionViewProps) {
         retryTimeoutRef.current = setTimeout(() => connect(), delay);
       }
     };
+  }, [provider, sessionId]);
+
+  const loadStaticConversation = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/conversation/${encodeURIComponent(sessionId)}`);
+      if (!response.ok) {
+        setMessages([]);
+        setLoading(false);
+        return;
+      }
+
+      const data: ConversationMessage[] = await response.json();
+      setMessages(data);
+    } catch {
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
   }, [sessionId]);
 
   useEffect(() => {
@@ -79,7 +102,11 @@ function SessionView(props: SessionViewProps) {
     offsetRef.current = 0;
     retryCountRef.current = 0;
 
-    connect();
+    if (provider === "claude") {
+      connect();
+    } else {
+      loadStaticConversation();
+    }
 
     return () => {
       mountedRef.current = false;
@@ -90,7 +117,7 @@ function SessionView(props: SessionViewProps) {
         eventSourceRef.current.close();
       }
     };
-  }, [connect]);
+  }, [connect, loadStaticConversation, provider]);
 
   const scrollToBottom = useCallback(() => {
     if (!lastMessageRef.current) {

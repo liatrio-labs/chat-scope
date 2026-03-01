@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type { Session } from "@claude-run/api";
+import type { Session, SessionProvider } from "@claude-run/api";
 import { PanelLeft, Copy, Check } from "lucide-react";
 import { formatTime } from "./utils";
 import SessionList from "./components/session-list";
@@ -9,7 +9,7 @@ import { useEventSource } from "./hooks/use-event-source";
 interface SessionHeaderProps {
   session: Session;
   copied: boolean;
-  onCopyResumeCommand: (sessionId: string, projectPath: string) => void;
+  onCopyResumeCommand: (sourceId: string, projectPath: string) => void;
 }
 
 function SessionHeader(props: SessionHeaderProps) {
@@ -21,6 +21,9 @@ function SessionHeader(props: SessionHeaderProps) {
         <span className="text-sm text-zinc-300 truncate max-w-xs">
           {session.display}
         </span>
+        <span className="text-xs text-zinc-500 shrink-0 uppercase tracking-wide">
+          {session.provider}
+        </span>
         <span className="text-xs text-zinc-600 shrink-0">
           {session.projectName}
         </span>
@@ -28,30 +31,35 @@ function SessionHeader(props: SessionHeaderProps) {
           {formatTime(session.timestamp)}
         </span>
       </div>
-      <button
-        onClick={() => onCopyResumeCommand(session.id, session.project)}
-        className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors cursor-pointer shrink-0"
-        title="Copy resume command to clipboard"
-      >
-        {copied ? (
-          <>
-            <Check className="w-3.5 h-3.5 text-green-500" />
-            <span className="text-green-500">Copied!</span>
-          </>
-        ) : (
-          <>
-            <Copy className="w-3.5 h-3.5" />
-            <span>Copy Resume Command</span>
-          </>
-        )}
-      </button>
+      {session.canResume && (
+        <button
+          onClick={() => onCopyResumeCommand(session.sourceId, session.project)}
+          className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors cursor-pointer shrink-0"
+          title="Copy resume command to clipboard"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-green-500" />
+              <span className="text-green-500">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy Resume Command</span>
+            </>
+          )}
+        </button>
+      )}
     </>
   );
 }
 
+type ProviderFilter = SessionProvider | "all";
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,17 +85,39 @@ function App() {
     return sessions.find((s) => s.id === selectedSession) || null;
   }, [sessions, selectedSession]);
 
-  useEffect(() => {
-    fetch("/api/projects")
+  const fetchProjects = useCallback((provider: ProviderFilter) => {
+    fetch(`/api/projects?provider=${provider}`)
       .then((res) => res.json())
       .then(setProjects)
       .catch(console.error);
   }, []);
 
+  const fetchSessions = useCallback((provider: ProviderFilter) => {
+    setLoading(true);
+    fetch(`/api/sessions?provider=${provider}`)
+      .then((res) => res.json())
+      .then((data: Session[]) => {
+        setSessions(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setSessions([]);
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    setSelectedProject(null);
+    fetchProjects(selectedProvider);
+    fetchSessions(selectedProvider);
+  }, [fetchProjects, fetchSessions, selectedProvider]);
+
   const handleSessionsFull = useCallback((event: MessageEvent) => {
     const data: Session[] = JSON.parse(event.data);
-    setSessions(data);
-    setLoading(false);
+    setSessions((prev) => {
+      const nonClaudeSessions = prev.filter((session) => session.provider !== "claude");
+      return [...nonClaudeSessions, ...data].sort((a, b) => b.timestamp - a.timestamp);
+    });
   }, []);
 
   const handleSessionsUpdate = useCallback((event: MessageEvent) => {
@@ -104,10 +134,15 @@ function App() {
   }, []);
 
   const handleSessionsError = useCallback(() => {
-    setLoading(false);
+    // Streaming failures should not blank the list; manual fetch remains source of truth.
   }, []);
 
-  useEventSource("/api/sessions/stream", {
+  const streamUrl =
+    selectedProvider === "codex" || selectedProvider === "opencode"
+      ? null
+      : "/api/sessions/stream?provider=claude";
+
+  useEventSource(streamUrl, {
     events: [
       { eventName: "sessions", onMessage: handleSessionsFull },
       { eventName: "sessionsUpdate", onMessage: handleSessionsUpdate },
@@ -116,11 +151,27 @@ function App() {
   });
 
   const filteredSessions = useMemo(() => {
-    if (!selectedProject) {
-      return sessions;
+    let filtered = sessions;
+    if (selectedProvider !== "all") {
+      filtered = filtered.filter((s) => s.provider === selectedProvider);
     }
-    return sessions.filter((s) => s.project === selectedProject);
-  }, [sessions, selectedProject]);
+
+    if (selectedProject) {
+      filtered = filtered.filter((s) => s.project === selectedProject);
+    }
+
+    return filtered;
+  }, [selectedProject, selectedProvider, sessions]);
+
+  useEffect(() => {
+    if (!selectedSession) {
+      return;
+    }
+    const stillExists = filteredSessions.some((session) => session.id === selectedSession);
+    if (!stillExists) {
+      setSelectedSession(null);
+    }
+  }, [filteredSessions, selectedSession]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
     setSelectedSession(sessionId);
@@ -147,6 +198,21 @@ function App() {
                     </option>
                   );
                 })}
+              </select>
+            </label>
+          </div>
+          <div className="border-b border-zinc-800/60">
+            <label htmlFor={"select-provider"} className="block w-full px-1">
+              <select
+                id={"select-provider"}
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value as ProviderFilter)}
+                className="w-full h-[42px] bg-transparent text-zinc-300 text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
+              >
+                <option value="all">All Providers</option>
+                <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
+                <option value="opencode">OpenCode</option>
               </select>
             </label>
           </div>
@@ -180,7 +246,12 @@ function App() {
         </div>
         <div className="flex-1 overflow-hidden">
           {selectedSession ? (
-            <SessionView sessionId={selectedSession} />
+            selectedSessionData ? (
+              <SessionView
+                sessionId={selectedSession}
+                provider={selectedSessionData.provider}
+              />
+            ) : null
           ) : (
             <div className="flex h-full items-center justify-center text-zinc-600">
               <div className="text-center">

@@ -139,9 +139,14 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
                   } ${virtualItem.index === 0 ? "border-t border-t-zinc-800/40" : ""}`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-zinc-500 font-medium">
-                      {session.projectName}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">
+                        {session.provider}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 font-medium truncate">
+                        {session.projectName}
+                      </span>
+                    </div>
                     <span className="text-[10px] text-zinc-600">
                       {formatTime(session.timestamp)}
                     </span>
