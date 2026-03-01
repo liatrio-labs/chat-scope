@@ -66,6 +66,35 @@ function SessionHeader(props: SessionHeaderProps) {
 }
 
 type ProviderFilter = SessionProvider | "all";
+const SEARCH_QUERY_PARAM = "q";
+
+function getInitialSearchQuery(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return (
+    new URLSearchParams(window.location.search).get(SEARCH_QUERY_PARAM) || ""
+  );
+}
+
+function syncSearchQueryParam(query: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  const normalizedQuery = query.trim();
+
+  if (normalizedQuery) {
+    url.searchParams.set(SEARCH_QUERY_PARAM, normalizedQuery);
+  } else {
+    url.searchParams.delete(SEARCH_QUERY_PARAM);
+  }
+
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(null, "", nextUrl);
+}
 
 interface IndexStatus {
   state: "idle" | "indexing" | "ready" | "error";
@@ -119,7 +148,7 @@ function App() {
   const [searchHitsBySessionId, setSearchHitsBySessionId] = useState<
     Record<string, number>
   >({});
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(getInitialSearchQuery);
   const [searching, setSearching] = useState(false);
   const [indexStatus, setIndexStatus] =
     useState<IndexStatus>(DEFAULT_INDEX_STATUS);
@@ -231,6 +260,10 @@ function App() {
     fetchSessions(selectedProvider);
     fetchIndexStatus().catch(console.error);
   }, [fetchIndexStatus, fetchProjects, fetchSessions, selectedProvider]);
+
+  useEffect(() => {
+    syncSearchQueryParam(searchQuery);
+  }, [searchQuery]);
 
   useEffect(() => {
     const normalizedQuery = searchQuery.trim();
