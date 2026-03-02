@@ -3,11 +3,12 @@ import { join, basename } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
 
-export type SessionProvider = "claude" | "codex" | "opencode";
+export type SessionProvider = "claude" | "codex" | "opencode" | "cursor";
 export const SESSION_PROVIDERS: SessionProvider[] = [
   "claude",
   "codex",
   "opencode",
+  "cursor",
 ];
 
 export interface HistoryEntry {
@@ -128,6 +129,7 @@ let openCodeStorageDir = join(
   "opencode",
   "storage",
 );
+let cursorProjectsDir = join(homedir(), ".cursor", "projects");
 
 const openCodeSessionDir = () => join(openCodeStorageDir, "session");
 const openCodeMessageDir = () => join(openCodeStorageDir, "message");
@@ -135,6 +137,7 @@ const openCodePartDir = () => join(openCodeStorageDir, "part");
 
 const claudeFileIndex = new Map<string, string>();
 const codexFileIndex = new Map<string, string>();
+const cursorFileIndex = new Map<string, string>();
 let historyCache: HistoryEntry[] | null = null;
 const pendingRequests = new Map<string, Promise<unknown>>();
 
@@ -149,6 +152,7 @@ export function initStorage(dir?: string): void {
     "opencode",
     "storage",
   );
+  cursorProjectsDir = join(homedir(), ".cursor", "projects");
 }
 
 export function getClaudeDir(): string {
@@ -427,6 +431,231 @@ async function getCodexSessionFiles(): Promise<string[]> {
   return getFilesRecursively(codexSessionsDir, (filePath) =>
     filePath.endsWith(".jsonl"),
   );
+}
+
+interface CursorTranscriptRecord {
+  role?: string;
+  timestamp?: string;
+  message?: {
+    content?:
+      | string
+      | Array<{
+          type?: string;
+          text?: string;
+        }>;
+  };
+}
+
+function getCursorProjectKeyFromPath(filePath: string): string {
+  const normalizedRoot = cursorProjectsDir.endsWith("/")
+    ? cursorProjectsDir
+    : `${cursorProjectsDir}/`;
+  if (!filePath.startsWith(normalizedRoot)) {
+    return "";
+  }
+
+  const relative = filePath.slice(normalizedRoot.length);
+  return relative.split("/")[0] ?? "";
+}
+
+function createCursorSourceId(
+  projectKey: string,
+  transcriptId: string,
+): string {
+  if (!projectKey) {
+    return transcriptId;
+  }
+
+  return `${projectKey}:${transcriptId}`;
+}
+
+function parseCursorSourceId(sourceId: string): {
+  projectKey: string;
+  transcriptId: string;
+} {
+  const separatorIndex = sourceId.indexOf(":");
+  if (separatorIndex <= 0) {
+    return { projectKey: "", transcriptId: sourceId };
+  }
+
+  return {
+    projectKey: sourceId.slice(0, separatorIndex),
+    transcriptId: sourceId.slice(separatorIndex + 1),
+  };
+}
+
+function getTextFromCursorContent(
+  content:
+    | string
+    | Array<{
+        type?: string;
+        text?: string;
+      }>
+    | undefined,
+): string {
+  if (!content) {
+    return "";
+  }
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content
+    .map((item) => item.text ?? "")
+    .filter((text) => text.trim().length > 0)
+    .join("\n");
+}
+
+async function getCursorTranscriptFiles(): Promise<string[]> {
+  return getFilesRecursively(
+    cursorProjectsDir,
+    (filePath) =>
+      filePath.endsWith(".jsonl") && filePath.includes("/agent-transcripts/"),
+  );
+}
+
+async function getCursorSessions(): Promise<Session[]> {
+  const files = await getCursorTranscriptFiles();
+  const sessions: Session[] = [];
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      try {
+        const transcriptId = basename(filePath, ".jsonl");
+        const projectKey = getCursorProjectKeyFromPath(filePath);
+        const sourceId = createCursorSourceId(projectKey, transcriptId);
+        const content = await readFile(filePath, "utf-8");
+        const lines = content.split("\n").filter(Boolean);
+
+        let display = "";
+        for (const line of lines) {
+          let record: CursorTranscriptRecord;
+          try {
+            record = JSON.parse(line) as CursorTranscriptRecord;
+          } catch {
+            continue;
+          }
+
+          if (record.role !== "user") {
+            continue;
+          }
+
+          display = getTextFromCursorContent(record.message?.content).trim();
+          if (display) {
+            break;
+          }
+        }
+
+        const fileStat = await stat(filePath);
+
+        cursorFileIndex.set(sourceId, filePath);
+
+        sessions.push({
+          id: createSessionId("cursor", sourceId),
+          sourceId,
+          provider: "cursor",
+          display: display || `Session ${transcriptId.slice(0, 8)}`,
+          timestamp: fileStat.mtimeMs,
+          project: projectKey,
+          projectName: projectKey || "Unknown",
+          transcriptPath: filePath,
+          canResume: false,
+        });
+      } catch {
+        // Ignore malformed Cursor transcript files.
+      }
+    }),
+  );
+
+  return sessions;
+}
+
+async function findCursorTranscriptFile(
+  sourceId: string,
+): Promise<string | null> {
+  if (cursorFileIndex.has(sourceId)) {
+    return cursorFileIndex.get(sourceId)!;
+  }
+
+  const { projectKey, transcriptId } = parseCursorSourceId(sourceId);
+
+  const files = await getCursorTranscriptFiles();
+  for (const filePath of files) {
+    const fileTranscriptId = basename(filePath, ".jsonl");
+    if (fileTranscriptId !== transcriptId) {
+      continue;
+    }
+
+    const fileProjectKey = getCursorProjectKeyFromPath(filePath);
+    if (projectKey && fileProjectKey !== projectKey) {
+      continue;
+    }
+
+    if (!projectKey) {
+      const canonicalSourceId = createCursorSourceId(
+        fileProjectKey,
+        fileTranscriptId,
+      );
+      cursorFileIndex.set(canonicalSourceId, filePath);
+      cursorFileIndex.set(sourceId, filePath);
+      return filePath;
+    }
+
+    if (fileProjectKey === projectKey) {
+      cursorFileIndex.set(sourceId, filePath);
+      return filePath;
+    }
+  }
+
+  return null;
+}
+
+async function getCursorConversation(
+  sourceId: string,
+): Promise<ConversationMessage[]> {
+  const filePath = await findCursorTranscriptFile(sourceId);
+  if (!filePath) {
+    return [];
+  }
+
+  try {
+    const content = await readFile(filePath, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    const messages: ConversationMessage[] = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      let record: CursorTranscriptRecord;
+      try {
+        record = JSON.parse(lines[index]) as CursorTranscriptRecord;
+      } catch {
+        continue;
+      }
+
+      const role = record.role;
+      if (role !== "user" && role !== "assistant") {
+        continue;
+      }
+
+      const text = getTextFromCursorContent(record.message?.content).trim();
+      if (!text) {
+        continue;
+      }
+
+      messages.push(
+        createSimpleMessage(
+          role,
+          text,
+          `${sourceId}:${index}`,
+          record.timestamp,
+        ),
+      );
+    }
+
+    return messages;
+  } catch {
+    return [];
+  }
 }
 
 function parseCodexTimestamp(value?: string): number {
@@ -913,6 +1142,8 @@ export async function getSessions(
             return getCodexSessions();
           case "opencode":
             return getOpenCodeSessions();
+          case "cursor":
+            return getCursorSessions();
           default:
             return [];
         }
@@ -1025,6 +1256,8 @@ export async function getConversation(
         return getCodexConversation(sourceId);
       case "opencode":
         return getOpenCodeConversation(sourceId);
+      case "cursor":
+        return getCursorConversation(sourceId);
       default:
         return [];
     }

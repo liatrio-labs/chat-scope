@@ -22,6 +22,7 @@ export interface IndexStatus {
     claude: number;
     codex: number;
     opencode: number;
+    cursor: number;
     total: number;
   };
   startedAt?: number;
@@ -56,6 +57,7 @@ let status: IndexStatus = {
     claude: 0,
     codex: 0,
     opencode: 0,
+    cursor: 0,
     total: 0,
   },
   generation: 0,
@@ -103,6 +105,7 @@ function toProviderCounts(): IndexStatus["counts"] {
     claude: 0,
     codex: 0,
     opencode: 0,
+    cursor: 0,
     total: 0,
   };
 
@@ -137,6 +140,7 @@ async function buildIndex(generation: number): Promise<void> {
       claude: 0,
       codex: 0,
       opencode: 0,
+      cursor: 0,
       total: 0,
     },
     startedAt: Date.now(),

@@ -199,3 +199,13 @@ Recovered from the 2026-03-01 planning session (`rollout-2026-03-01T14-41-40-019
 
 - Phase 1 PR: provider abstraction + Codex/OpenCode shipped (completed).
 - Phase 2 PR: Cursor adapter + transcript search integration + fallback behavior for legacy Cursor storage.
+
+### Phase 2 Acceptance Criteria
+
+- `GET /api/sessions?provider=cursor` returns Cursor sessions without breaking existing providers.
+- `GET /api/sessions?provider=all` includes Cursor sessions with provider tag `cursor` and composite IDs.
+- Opening a Cursor session returns normalized user/assistant conversation messages from transcript JSONL files.
+- Indexed search returns Cursor matches for transcript-visible text and reports hit counts consistently with other providers.
+- Provider filter in UI includes Cursor and renders Cursor sessions with correct badges and metadata.
+- Missing Cursor directories or malformed transcript files are handled gracefully (no server crash, partial data allowed).
+- Existing Claude/Codex/OpenCode behavior remains unchanged (session listing, conversation view, and search still pass manual verification).

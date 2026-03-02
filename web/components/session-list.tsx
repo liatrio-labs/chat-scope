@@ -10,12 +10,13 @@ interface IndexStatus {
     indexedSessions: number;
     totalProviders: number;
     completedProviders: number;
-    currentProvider?: "claude" | "codex" | "opencode";
+    currentProvider?: "claude" | "codex" | "opencode" | "cursor";
   };
   counts: {
     claude: number;
     codex: number;
     opencode: number;
+    cursor: number;
     total: number;
   };
   lastRefreshAt?: number;

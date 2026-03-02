@@ -109,6 +109,7 @@ interface IndexStatus {
     claude: number;
     codex: number;
     opencode: number;
+    cursor: number;
     total: number;
   };
   startedAt?: number;
@@ -130,13 +131,14 @@ const DEFAULT_INDEX_STATUS: IndexStatus = {
   progress: {
     totalSessions: 0,
     indexedSessions: 0,
-    totalProviders: 3,
+    totalProviders: 4,
     completedProviders: 0,
   },
   counts: {
     claude: 0,
     codex: 0,
     opencode: 0,
+    cursor: 0,
     total: 0,
   },
   generation: 0,
@@ -387,7 +389,9 @@ function App() {
   }, []);
 
   const streamUrl =
-    selectedProvider === "codex" || selectedProvider === "opencode"
+    selectedProvider === "codex" ||
+    selectedProvider === "opencode" ||
+    selectedProvider === "cursor"
       ? null
       : "/api/sessions/stream?provider=claude";
 
@@ -466,6 +470,7 @@ function App() {
                 <option value="claude">Claude</option>
                 <option value="codex">Codex</option>
                 <option value="opencode">OpenCode</option>
+                <option value="cursor">Cursor</option>
               </select>
             </label>
           </div>
