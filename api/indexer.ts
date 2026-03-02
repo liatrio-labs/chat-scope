@@ -1,6 +1,7 @@
 import {
   getConversation,
   getSessions,
+  getOpenCodeTranscriptSearchText,
   SESSION_PROVIDERS,
   type Session,
   type SessionProvider,
@@ -36,6 +37,19 @@ interface IndexedDocument {
   sessionId: string;
   provider: SessionProvider;
   text: string;
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      setTimeout(() => resolve(fallback), timeoutMs);
+    }),
+  ]);
 }
 
 export interface SearchMatch {
@@ -165,27 +179,54 @@ async function buildIndex(generation: number): Promise<void> {
     };
 
     const providerSessions = sessionsByProvider.get(provider) ?? [];
-    for (const session of providerSessions) {
-      if (status.generation !== generation) {
-        return;
+    const concurrency = provider === "opencode" ? 8 : 2;
+    let sessionIndex = 0;
+
+    const worker = async () => {
+      while (sessionIndex < providerSessions.length) {
+        if (status.generation !== generation) {
+          return;
+        }
+
+        const currentIndex = sessionIndex;
+        sessionIndex += 1;
+        const session = providerSessions[currentIndex];
+
+        let text = "";
+        if (session.provider === "opencode") {
+          const openCodeText = await withTimeout(
+            getOpenCodeTranscriptSearchText(session.sourceId),
+            2000,
+            "",
+          );
+          const metadataText = [
+            session.display,
+            session.projectName,
+            session.project,
+          ].join("\n");
+          text = `${metadataText}\n${openCodeText ?? ""}`.toLowerCase();
+        } else {
+          const messages = await getConversation(session.id);
+          text = createSearchText(session, messages);
+        }
+
+        nextDocuments.set(session.id, {
+          sessionId: session.id,
+          provider: session.provider,
+          text,
+        });
+
+        status = {
+          ...status,
+          progress: {
+            ...status.progress,
+            indexedSessions: status.progress.indexedSessions + 1,
+          },
+        };
       }
+    };
 
-      const messages = await getConversation(session.id);
-      const text = createSearchText(session, messages);
-      nextDocuments.set(session.id, {
-        sessionId: session.id,
-        provider: session.provider,
-        text,
-      });
-
-      status = {
-        ...status,
-        progress: {
-          ...status.progress,
-          indexedSessions: status.progress.indexedSessions + 1,
-        },
-      };
-    }
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     status = {
       ...status,

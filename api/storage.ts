@@ -2,6 +2,8 @@ import { readdir, readFile, stat, open } from "fs/promises";
 import { join, basename } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 export type SessionProvider = "claude" | "codex" | "opencode" | "cursor";
 export const SESSION_PROVIDERS: SessionProvider[] = [
@@ -129,6 +131,13 @@ let openCodeStorageDir = join(
   "opencode",
   "storage",
 );
+let openCodeDbPath = join(
+  homedir(),
+  ".local",
+  "share",
+  "opencode",
+  "opencode.db",
+);
 let cursorProjectsDir = join(homedir(), ".cursor", "projects");
 
 const openCodeSessionDir = () => join(openCodeStorageDir, "session");
@@ -138,8 +147,14 @@ const openCodePartDir = () => join(openCodeStorageDir, "part");
 const claudeFileIndex = new Map<string, string>();
 const codexFileIndex = new Map<string, string>();
 const cursorFileIndex = new Map<string, string>();
+let openCodeConversationCache: Map<string, ConversationMessage[]> | null = null;
+let openCodeConversationCacheMtime = 0;
+let openCodeSearchTextCache: Map<string, string> | null = null;
+let openCodeSearchTextCacheMtime = 0;
+let openCodeSearchTextCachePromise: Promise<void> | null = null;
 let historyCache: HistoryEntry[] | null = null;
 const pendingRequests = new Map<string, Promise<unknown>>();
+const execFileAsync = promisify(execFile);
 
 export function initStorage(dir?: string): void {
   claudeDir = dir ?? join(homedir(), ".claude");
@@ -152,7 +167,19 @@ export function initStorage(dir?: string): void {
     "opencode",
     "storage",
   );
+  openCodeDbPath = join(
+    homedir(),
+    ".local",
+    "share",
+    "opencode",
+    "opencode.db",
+  );
   cursorProjectsDir = join(homedir(), ".cursor", "projects");
+  openCodeConversationCache = null;
+  openCodeConversationCacheMtime = 0;
+  openCodeSearchTextCache = null;
+  openCodeSearchTextCacheMtime = 0;
+  openCodeSearchTextCachePromise = null;
 }
 
 export function getClaudeDir(): string {
@@ -234,6 +261,23 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+async function runSqliteJsonQuery<T>(query: string): Promise<T[]> {
+  const { stdout } = await execFileAsync(
+    "sqlite3",
+    ["-json", openCodeDbPath, query],
+    {
+      maxBuffer: 1024 * 1024 * 512,
+    },
+  );
+
+  const output = stdout.trim();
+  if (!output) {
+    return [];
+  }
+
+  return JSON.parse(output) as T[];
 }
 
 async function getFilesRecursively(
@@ -883,6 +927,61 @@ interface OpenCodePartFile {
   state?: OpenCodeToolState;
 }
 
+interface OpenCodeDbSessionRow {
+  id: string;
+  title?: string;
+  directory?: string;
+  time_created?: number;
+  time_updated?: number;
+}
+
+interface OpenCodeDbMessageRow {
+  id: string;
+  session_id: string;
+  time_created?: number;
+  time_updated?: number;
+  data: string;
+}
+
+interface OpenCodeDbPartRow {
+  id: string;
+  message_id: string;
+  session_id: string;
+  time_created?: number;
+  time_updated?: number;
+  data: string;
+}
+
+interface OpenCodeDbSearchMessageRow {
+  session_id: string;
+  text: string;
+}
+
+interface OpenCodeDbSearchPartRow {
+  id: string;
+  message_id: string;
+  time_created?: number;
+  data: string;
+}
+
+interface OpenCodeDbMessageData {
+  role?: string;
+  parentID?: string;
+  modelID?: string;
+  time?: {
+    created?: number;
+    completed?: number;
+  };
+}
+
+interface OpenCodeDbPartData {
+  type?: string;
+  text?: string;
+  tool?: string;
+  callID?: string;
+  state?: OpenCodeToolState;
+}
+
 function toIsoTimestamp(timestampMs?: number): string | undefined {
   if (!timestampMs || Number.isNaN(timestampMs)) {
     return undefined;
@@ -940,7 +1039,7 @@ async function getOpenCodeSessionFiles(): Promise<string[]> {
   );
 }
 
-async function getOpenCodeSessions(): Promise<Session[]> {
+async function getOpenCodeSessionsFromFiles(): Promise<Session[]> {
   const files = await getOpenCodeSessionFiles();
   const sessions: Session[] = [];
 
@@ -970,6 +1069,83 @@ async function getOpenCodeSessions(): Promise<Session[]> {
   );
 
   return sessions;
+}
+
+async function getOpenCodeSessionsFromDb(): Promise<Session[]> {
+  const rows = await runSqliteJsonQuery<OpenCodeDbSessionRow>(
+    "select id, title, directory, time_created, time_updated from session where time_archived is null order by time_updated desc",
+  );
+
+  return rows
+    .filter((row) => Boolean(row.id))
+    .map((row) => {
+      const timestamp = row.time_updated ?? row.time_created ?? 0;
+      const projectPath = row.directory ?? "";
+
+      return {
+        id: createSessionId("opencode", row.id),
+        sourceId: row.id,
+        provider: "opencode" as const,
+        display: row.title || `Session ${row.id.slice(0, 8)}`,
+        timestamp,
+        project: projectPath,
+        projectName: projectPath ? getProjectName(projectPath) : "Unknown",
+        transcriptPath: `${openCodeDbPath}#session:${row.id}`,
+        canResume: false,
+      };
+    });
+}
+
+async function getOpenCodeSessions(): Promise<Session[]> {
+  try {
+    const dbSessions = await getOpenCodeSessionsFromDb();
+    if (dbSessions.length > 0) {
+      return dbSessions;
+    }
+  } catch {
+    // Fall back to filesystem storage when DB is unavailable or malformed.
+  }
+
+  return getOpenCodeSessionsFromFiles();
+}
+
+export async function getOpenCodeTranscriptSearchText(
+  sourceId: string,
+): Promise<string | null> {
+  let dbMtime = 0;
+  try {
+    dbMtime = (await stat(openCodeDbPath)).mtimeMs;
+  } catch {
+    return null;
+  }
+
+  if (openCodeSearchTextCache && openCodeSearchTextCacheMtime === dbMtime) {
+    return openCodeSearchTextCache.get(sourceId) ?? "";
+  }
+
+  if (!openCodeSearchTextCachePromise) {
+    openCodeSearchTextCachePromise = (async () => {
+      const rows = await runSqliteJsonQuery<OpenCodeDbSearchMessageRow>(
+        "select m.session_id as session_id, group_concat(json_extract(p.data, '$.text'), '\\n') as text from message m join part p on p.message_id = m.id where json_extract(m.data, '$.role') in ('user', 'assistant') and json_extract(p.data, '$.type') in ('text', 'reasoning') and json_extract(p.data, '$.text') is not null and length(trim(json_extract(p.data, '$.text'))) > 0 group by m.session_id",
+      );
+
+      const nextCache = new Map<string, string>();
+      for (const row of rows) {
+        if (!row.session_id) {
+          continue;
+        }
+        nextCache.set(row.session_id, row.text ?? "");
+      }
+
+      openCodeSearchTextCache = nextCache;
+      openCodeSearchTextCacheMtime = dbMtime;
+    })().finally(() => {
+      openCodeSearchTextCachePromise = null;
+    });
+  }
+
+  await openCodeSearchTextCachePromise;
+  return openCodeSearchTextCache?.get(sourceId) ?? "";
 }
 
 async function getOpenCodeMessages(
@@ -1044,7 +1220,7 @@ function partsToContentBlocks(parts: OpenCodePartFile[]): ContentBlock[] {
   return blocks;
 }
 
-async function getOpenCodeConversation(
+async function getOpenCodeConversationFromFiles(
   sourceId: string,
 ): Promise<ConversationMessage[]> {
   const messages = await getOpenCodeMessages(sourceId);
@@ -1082,6 +1258,143 @@ async function getOpenCodeConversation(
   }
 
   return conversation;
+}
+
+async function getOpenCodeConversationFromDb(
+  sourceId: string,
+): Promise<ConversationMessage[] | null> {
+  let dbMtime = 0;
+  try {
+    dbMtime = (await stat(openCodeDbPath)).mtimeMs;
+  } catch {
+    return null;
+  }
+
+  if (
+    !openCodeConversationCache ||
+    openCodeConversationCacheMtime !== dbMtime
+  ) {
+    openCodeConversationCache = new Map<string, ConversationMessage[]>();
+    openCodeConversationCacheMtime = dbMtime;
+  }
+
+  if (openCodeConversationCache.has(sourceId)) {
+    return openCodeConversationCache.get(sourceId) ?? [];
+  }
+
+  const escapedSessionId = sourceId.replace(/'/g, "''");
+  const messages = await runSqliteJsonQuery<OpenCodeDbMessageRow>(
+    `select id, session_id, time_created, time_updated, data from message where session_id = '${escapedSessionId}' order by time_created asc`,
+  );
+
+  if (messages.length === 0) {
+    openCodeConversationCache.set(sourceId, []);
+    return [];
+  }
+
+  const parts = await runSqliteJsonQuery<OpenCodeDbPartRow>(
+    `select id, message_id, session_id, time_created, time_updated, data from part where session_id = '${escapedSessionId}' order by time_created asc`,
+  );
+
+  const partsByMessageId = new Map<
+    string,
+    Array<{ part: OpenCodePartFile; timeCreated: number }>
+  >();
+
+  for (const row of parts) {
+    let partData: OpenCodeDbPartData;
+    try {
+      partData = JSON.parse(row.data) as OpenCodeDbPartData;
+    } catch {
+      continue;
+    }
+
+    if (!partData.type) {
+      continue;
+    }
+
+    const converted: OpenCodePartFile = {
+      id: row.id,
+      messageID: row.message_id,
+      sessionID: row.session_id,
+      type: partData.type,
+      text: partData.text,
+      tool: partData.tool,
+      callID: partData.callID,
+      state: partData.state,
+    };
+
+    const bucket = partsByMessageId.get(row.message_id) ?? [];
+    bucket.push({ part: converted, timeCreated: row.time_created ?? 0 });
+    partsByMessageId.set(row.message_id, bucket);
+  }
+
+  const conversation: ConversationMessage[] = [];
+
+  for (const messageRow of messages) {
+    let messageData: OpenCodeDbMessageData;
+    try {
+      messageData = JSON.parse(messageRow.data) as OpenCodeDbMessageData;
+    } catch {
+      continue;
+    }
+
+    const role =
+      messageData.role === "assistant"
+        ? "assistant"
+        : messageData.role === "user"
+          ? "user"
+          : null;
+    if (!role) {
+      continue;
+    }
+
+    const messageParts = (partsByMessageId.get(messageRow.id) ?? [])
+      .sort((a, b) => {
+        if (a.timeCreated !== b.timeCreated) {
+          return a.timeCreated - b.timeCreated;
+        }
+        return a.part.id.localeCompare(b.part.id);
+      })
+      .map((entry) => entry.part);
+
+    const contentBlocks = partsToContentBlocks(messageParts);
+    if (contentBlocks.length === 0) {
+      continue;
+    }
+
+    conversation.push({
+      type: role,
+      uuid: messageRow.id,
+      parentUuid: messageData.parentID,
+      timestamp: toIsoTimestamp(
+        messageData.time?.created ?? messageRow.time_created ?? undefined,
+      ),
+      message: {
+        role,
+        content: contentBlocks,
+        model: messageData.modelID,
+      },
+    });
+  }
+
+  openCodeConversationCache.set(sourceId, conversation);
+  return conversation;
+}
+
+async function getOpenCodeConversation(
+  sourceId: string,
+): Promise<ConversationMessage[]> {
+  try {
+    const fromDb = await getOpenCodeConversationFromDb(sourceId);
+    if (fromDb !== null) {
+      return fromDb;
+    }
+  } catch {
+    // Fall back to filesystem storage when DB is unavailable or malformed.
+  }
+
+  return getOpenCodeConversationFromFiles(sourceId);
 }
 
 export async function loadStorage(): Promise<void> {
