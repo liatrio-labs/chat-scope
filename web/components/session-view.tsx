@@ -36,6 +36,7 @@ function SessionView(props: SessionViewProps) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
+  const shouldScrollToFirstMatchRef = useRef(false);
 
   const connect = useCallback(() => {
     if (provider !== "claude") {
@@ -198,7 +199,9 @@ function SessionView(props: SessionViewProps) {
   );
 
   useEffect(() => {
-    setTranscriptSearchQuery(searchQuery?.trim() ?? "");
+    const nextQuery = searchQuery?.trim() ?? "";
+    setTranscriptSearchQuery(nextQuery);
+    shouldScrollToFirstMatchRef.current = nextQuery.length > 0;
   }, [searchQuery, sessionId]);
 
   const activateMatch = useCallback((index: number, shouldScroll: boolean) => {
@@ -330,7 +333,12 @@ function SessionView(props: SessionViewProps) {
     setMatchCount(marks.length);
 
     if (marks.length > 0) {
-      activateMatch(0, false);
+      const shouldScrollToFirstMatch = shouldScrollToFirstMatchRef.current;
+      activateMatch(0, shouldScrollToFirstMatch);
+      if (shouldScrollToFirstMatch) {
+        setAutoScroll(false);
+        shouldScrollToFirstMatchRef.current = false;
+      }
     }
 
     return () => {
