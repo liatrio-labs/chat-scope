@@ -22,6 +22,9 @@ function SessionView(props: SessionViewProps) {
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isAtTop, setIsAtTop] = useState(true);
+  const [transcriptSearchQuery, setTranscriptSearchQuery] = useState(
+    searchQuery?.trim() ?? "",
+  );
   const [matchCount, setMatchCount] = useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -185,6 +188,11 @@ function SessionView(props: SessionViewProps) {
   const conversationMessages = messages.filter(
     (m) => m.type === "user" || m.type === "assistant",
   );
+  const normalizedTranscriptQuery = transcriptSearchQuery.trim();
+
+  useEffect(() => {
+    setTranscriptSearchQuery(searchQuery?.trim() ?? "");
+  }, [searchQuery, sessionId]);
 
   const activateMatch = useCallback((index: number, shouldScroll: boolean) => {
     const marks = matchElementsRef.current;
@@ -224,7 +232,7 @@ function SessionView(props: SessionViewProps) {
 
   useEffect(() => {
     const root = containerRef.current;
-    const query = searchQuery?.trim();
+    const query = normalizedTranscriptQuery;
     if (!root) {
       return;
     }
@@ -321,7 +329,7 @@ function SessionView(props: SessionViewProps) {
     return () => {
       unwrapMarks();
     };
-  }, [activateMatch, conversationMessages, searchQuery, summary]);
+  }, [activateMatch, conversationMessages, normalizedTranscriptQuery, summary]);
 
   if (loading) {
     return (
@@ -338,33 +346,51 @@ function SessionView(props: SessionViewProps) {
         onScroll={handleScroll}
         className="h-full overflow-y-auto bg-zinc-950"
       >
-        {searchQuery?.trim() && (
-          <div className="sticky top-0 z-20 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur px-4 py-2">
-            <div className="mx-auto max-w-3xl flex items-center justify-between gap-3">
-              <div className="text-xs text-zinc-300">
-                {matchCount > 0
-                  ? `Matches ${activeMatchIndex + 1}/${matchCount}`
-                  : "No matches in this transcript"}
-              </div>
-              <div className="flex items-center gap-2">
+        <div className="sticky top-0 z-20 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur px-4 py-2">
+          <div className="mx-auto max-w-3xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <input
+                type="text"
+                value={transcriptSearchQuery}
+                onChange={(e) => setTranscriptSearchQuery(e.target.value)}
+                placeholder="Search in transcript..."
+                className="w-full max-w-sm rounded border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-600"
+              />
+              {normalizedTranscriptQuery && (
                 <button
-                  onClick={goToPreviousMatch}
-                  disabled={matchCount === 0}
-                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setTranscriptSearchQuery("")}
+                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80"
                 >
-                  Prev
+                  Clear
                 </button>
-                <button
-                  onClick={goToNextMatch}
-                  disabled={matchCount === 0}
-                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="text-xs text-zinc-300 min-w-[160px] text-right">
+                {normalizedTranscriptQuery
+                  ? matchCount > 0
+                    ? `Matches ${activeMatchIndex + 1}/${matchCount}`
+                    : "No matches"
+                  : "Type to search"}
               </div>
+              <button
+                onClick={goToPreviousMatch}
+                disabled={matchCount === 0}
+                className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <button
+                onClick={goToNextMatch}
+                disabled={matchCount === 0}
+                className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
             </div>
           </div>
-        )}
+        </div>
 
         <div className="mx-auto max-w-3xl px-4 py-4">
           {summary && (
