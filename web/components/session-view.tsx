@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import type { ConversationMessage, SessionProvider } from "@claude-run/api";
 import MessageBlock from "./message-block";
 import ScrollToBottomButton from "./scroll-to-bottom-button";
@@ -51,7 +51,7 @@ function SessionView(props: SessionViewProps) {
     }
 
     const eventSource = new EventSource(
-      `/api/conversation/${sessionId}/stream?offset=${offsetRef.current}`,
+      `/api/conversation/${encodeURIComponent(sessionId)}/stream?offset=${offsetRef.current}`,
     );
     eventSourceRef.current = eventSource;
 
@@ -184,11 +184,18 @@ function SessionView(props: SessionViewProps) {
     setIsAtTop(scrollTop <= SCROLL_THRESHOLD_PX);
   };
 
-  const summary = messages.find((m) => m.type === "summary");
-  const conversationMessages = messages.filter(
-    (m) => m.type === "user" || m.type === "assistant",
+  const summary = useMemo(
+    () => messages.find((m) => m.type === "summary"),
+    [messages],
   );
-  const normalizedTranscriptQuery = transcriptSearchQuery.trim();
+  const conversationMessages = useMemo(
+    () => messages.filter((m) => m.type === "user" || m.type === "assistant"),
+    [messages],
+  );
+  const normalizedTranscriptQuery = useMemo(
+    () => transcriptSearchQuery.trim(),
+    [transcriptSearchQuery],
+  );
 
   useEffect(() => {
     setTranscriptSearchQuery(searchQuery?.trim() ?? "");

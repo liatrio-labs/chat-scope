@@ -155,6 +155,31 @@ let openCodeSearchTextCachePromise: Promise<void> | null = null;
 let historyCache: HistoryEntry[] | null = null;
 const pendingRequests = new Map<string, Promise<unknown>>();
 const execFileAsync = promisify(execFile);
+const SQLITE_QUERY_TIMEOUT_MS = 30000;
+const TRANSCRIPT_SEARCH_CHUNK_SIZE = 16;
+
+function isProcessTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: string;
+    signal?: string;
+    message?: string;
+    killed?: boolean;
+  };
+
+  if (candidate.code === "ETIMEDOUT" || candidate.signal === "SIGTERM") {
+    return true;
+  }
+
+  if (typeof candidate.message === "string") {
+    return candidate.message.toLowerCase().includes("timed out");
+  }
+
+  return Boolean(candidate.killed);
+}
 
 export function initStorage(dir?: string): void {
   claudeDir = dir ?? join(homedir(), ".claude");
@@ -264,13 +289,25 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
 }
 
 async function runSqliteJsonQuery<T>(query: string): Promise<T[]> {
-  const { stdout } = await execFileAsync(
-    "sqlite3",
-    ["-json", openCodeDbPath, query],
-    {
-      maxBuffer: 1024 * 1024 * 512,
-    },
-  );
+  let stdout: string;
+  try {
+    const result = await execFileAsync(
+      "sqlite3",
+      ["-json", openCodeDbPath, query],
+      {
+        maxBuffer: 1024 * 1024 * 512,
+        timeout: SQLITE_QUERY_TIMEOUT_MS,
+      },
+    );
+    stdout = result.stdout;
+  } catch (error) {
+    if (isProcessTimeoutError(error)) {
+      throw new Error(
+        `sqlite3 query timed out after ${SQLITE_QUERY_TIMEOUT_MS}ms`,
+      );
+    }
+    throw error;
+  }
 
   const output = stdout.trim();
   if (!output) {
@@ -1139,9 +1176,15 @@ export async function getOpenCodeTranscriptSearchText(
 
       openCodeSearchTextCache = nextCache;
       openCodeSearchTextCacheMtime = dbMtime;
-    })().finally(() => {
-      openCodeSearchTextCachePromise = null;
-    });
+    })()
+      .catch((error) => {
+        console.error("Error loading OpenCode search text cache:", error);
+        openCodeSearchTextCache = new Map<string, string>();
+        openCodeSearchTextCacheMtime = dbMtime;
+      })
+      .finally(() => {
+        openCodeSearchTextCachePromise = null;
+      });
   }
 
   await openCodeSearchTextCachePromise;
@@ -1505,21 +1548,42 @@ export async function searchSessions(
     unresolved.push(session);
   }
 
-  const transcriptMatches = await Promise.all(
-    unresolved.map(async (session) => {
-      const messages = await getConversation(session.id);
-      const text = messages
-        .map((message) => messageToSearchText(message))
-        .join("\n")
-        .toLowerCase();
-      return text.includes(normalizedQuery) ? session : null;
-    }),
-  );
+  const transcriptMatches: Session[] = [];
 
-  return sortSessions([
-    ...directMatches,
-    ...transcriptMatches.filter((s): s is Session => s !== null),
-  ]);
+  for (
+    let start = 0;
+    start < unresolved.length;
+    start += TRANSCRIPT_SEARCH_CHUNK_SIZE
+  ) {
+    const chunk = unresolved.slice(start, start + TRANSCRIPT_SEARCH_CHUNK_SIZE);
+    const chunkMatches = await Promise.all(
+      chunk.map(async (session) => {
+        if (session.provider === "opencode") {
+          const openCodeText = await getOpenCodeTranscriptSearchText(
+            session.sourceId,
+          );
+          const haystack =
+            `${session.display}\n${session.projectName}\n${session.project}\n${openCodeText ?? ""}`.toLowerCase();
+          return haystack.includes(normalizedQuery) ? session : null;
+        }
+
+        const messages = await getConversation(session.id);
+        const text = messages
+          .map((message) => messageToSearchText(message))
+          .join("\n")
+          .toLowerCase();
+        return text.includes(normalizedQuery) ? session : null;
+      }),
+    );
+
+    for (const match of chunkMatches) {
+      if (match) {
+        transcriptMatches.push(match);
+      }
+    }
+  }
+
+  return sortSessions([...directMatches, ...transcriptMatches]);
 }
 
 async function getClaudeConversation(
