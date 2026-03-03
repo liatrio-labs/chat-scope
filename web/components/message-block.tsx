@@ -69,13 +69,15 @@ const MessageBlock = memo(function MessageBlock(props: MessageBlockProps) {
     }
     return content.filter(
       (b) =>
-        b.type === "tool_use" || b.type === "tool_result" || b.type === "thinking"
+        b.type === "tool_use" ||
+        b.type === "tool_result" ||
+        b.type === "thinking",
     );
   };
 
   const getVisibleTextBlocks = (): ContentBlock[] => {
     return getTextBlocks().filter(
-      (b) => b.text && sanitizeText(b.text).length > 0
+      (b) => b.text && sanitizeText(b.text).length > 0,
     );
   };
 
@@ -91,7 +93,9 @@ const MessageBlock = memo(function MessageBlock(props: MessageBlockProps) {
   const hasText = hasVisibleText();
   const hasTools = toolBlocks.length > 0;
 
-  const toolMap = Array.isArray(content) ? buildToolMap(content) : new Map<string, string>();
+  const toolMap = Array.isArray(content)
+    ? buildToolMap(content)
+    : new Map<string, string>();
 
   if (!hasText && hasTools) {
     return (
@@ -113,8 +117,8 @@ const MessageBlock = memo(function MessageBlock(props: MessageBlockProps) {
         <div
           className={`px-3.5 py-2.5 rounded-2xl overflow-hidden ${
             isUser
-              ? "bg-indigo-600/80 text-indigo-50 rounded-br-md"
-              : "bg-cyan-700/50 text-zinc-100 rounded-bl-md"
+              ? "bg-[var(--brand-primary)]/22 text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/40 rounded-br-md"
+              : "bg-[var(--brand-bg-secondary)]/95 text-[var(--brand-text-primary)] border border-[var(--brand-border-soft)] rounded-bl-md"
           }`}
         >
           {typeof content === "string" ? (
@@ -128,7 +132,12 @@ const MessageBlock = memo(function MessageBlock(props: MessageBlockProps) {
           ) : (
             <div className="flex flex-col gap-1">
               {visibleTextBlocks.map((block, index) => (
-                <ContentBlockRenderer key={index} block={block} isUser={isUser} toolMap={toolMap} />
+                <ContentBlockRenderer
+                  key={index}
+                  block={block}
+                  isUser={isUser}
+                  toolMap={toolMap}
+                />
               ))}
             </div>
           )}
@@ -137,7 +146,11 @@ const MessageBlock = memo(function MessageBlock(props: MessageBlockProps) {
         {hasTools && (
           <div className="flex flex-col gap-1 mt-1.5">
             {toolBlocks.map((block, index) => (
-              <ContentBlockRenderer key={index} block={block} toolMap={toolMap} />
+              <ContentBlockRenderer
+                key={index}
+                block={block}
+                toolMap={toolMap}
+              />
             ))}
           </div>
         )}
@@ -195,9 +208,12 @@ function getFilePathPreview(filePath: string): string {
 type PreviewHandler = (input: Record<string, unknown>) => string | null;
 
 const TOOL_PREVIEW_HANDLERS: Record<string, PreviewHandler> = {
-  read: (input) => input.file_path ? getFilePathPreview(String(input.file_path)) : null,
-  edit: (input) => input.file_path ? getFilePathPreview(String(input.file_path)) : null,
-  write: (input) => input.file_path ? getFilePathPreview(String(input.file_path)) : null,
+  read: (input) =>
+    input.file_path ? getFilePathPreview(String(input.file_path)) : null,
+  edit: (input) =>
+    input.file_path ? getFilePathPreview(String(input.file_path)) : null,
+  write: (input) =>
+    input.file_path ? getFilePathPreview(String(input.file_path)) : null,
   bash: (input) => {
     if (!input.command) {
       return null;
@@ -205,12 +221,15 @@ const TOOL_PREVIEW_HANDLERS: Record<string, PreviewHandler> = {
     const cmd = String(input.command);
     return cmd.length > 50 ? cmd.slice(0, 50) + "..." : cmd;
   },
-  grep: (input) => input.pattern ? `"${String(input.pattern)}"` : null,
-  glob: (input) => input.pattern ? String(input.pattern) : null,
-  task: (input) => input.description ? String(input.description) : null,
+  grep: (input) => (input.pattern ? `"${String(input.pattern)}"` : null),
+  glob: (input) => (input.pattern ? String(input.pattern) : null),
+  task: (input) => (input.description ? String(input.description) : null),
 };
 
-function getToolPreview(toolName: string, input: Record<string, unknown> | undefined): string | null {
+function getToolPreview(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+): string | null {
   if (!input) {
     return null;
   }
@@ -244,23 +263,55 @@ function ToolInputRenderer(props: ToolInputRendererProps) {
   const name = toolName.toLowerCase();
 
   if (name === "todowrite" && input.todos) {
-    return <TodoRenderer todos={input.todos as Array<{ content: string; status: "pending" | "in_progress" | "completed" }>} />;
+    return (
+      <TodoRenderer
+        todos={
+          input.todos as Array<{
+            content: string;
+            status: "pending" | "in_progress" | "completed";
+          }>
+        }
+      />
+    );
   }
 
   if (name === "edit" && input.file_path) {
-    return <EditRenderer input={input as { file_path: string; old_string: string; new_string: string }} />;
+    return (
+      <EditRenderer
+        input={
+          input as { file_path: string; old_string: string; new_string: string }
+        }
+      />
+    );
   }
 
   if (name === "write" && input.file_path) {
-    return <WriteRenderer input={input as { file_path: string; content: string }} />;
+    return (
+      <WriteRenderer input={input as { file_path: string; content: string }} />
+    );
   }
 
   if (name === "bash" && input.command) {
-    return <BashRenderer input={input as { command: string; description?: string }} />;
+    return (
+      <BashRenderer
+        input={input as { command: string; description?: string }}
+      />
+    );
   }
 
   if (name === "grep" && input.pattern) {
-    return <GrepRenderer input={input as { pattern: string; path?: string; glob?: string; type?: string }} />;
+    return (
+      <GrepRenderer
+        input={
+          input as {
+            pattern: string;
+            path?: string;
+            glob?: string;
+            type?: string;
+          }
+        }
+      />
+    );
   }
 
   if (name === "glob" && input.pattern) {
@@ -268,15 +319,45 @@ function ToolInputRenderer(props: ToolInputRendererProps) {
   }
 
   if (name === "read" && input.file_path) {
-    return <ReadRenderer input={input as { file_path: string; offset?: number; limit?: number }} />;
+    return (
+      <ReadRenderer
+        input={input as { file_path: string; offset?: number; limit?: number }}
+      />
+    );
   }
 
   if (name === "askuserquestion" && input.questions) {
-    return <AskQuestionRenderer input={input as { questions: Array<{ header: string; question: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }> }} />;
+    return (
+      <AskQuestionRenderer
+        input={
+          input as {
+            questions: Array<{
+              header: string;
+              question: string;
+              options: Array<{ label: string; description: string }>;
+              multiSelect: boolean;
+            }>;
+          }
+        }
+      />
+    );
   }
 
   if (name === "task" && input.prompt) {
-    return <TaskRenderer input={input as { description: string; prompt: string; subagent_type: string; model?: string; run_in_background?: boolean; resume?: string }} />;
+    return (
+      <TaskRenderer
+        input={
+          input as {
+            description: string;
+            prompt: string;
+            subagent_type: string;
+            model?: string;
+            run_in_background?: boolean;
+            resume?: string;
+          }
+        }
+      />
+    );
   }
 
   return (
@@ -334,7 +415,11 @@ function ToolResultRenderer(props: ToolResultRendererProps) {
       }`}
     >
       {displayContent}
-      {truncated && <span className="text-zinc-500">... ({content.length - maxLength} more chars)</span>}
+      {truncated && (
+        <span className="text-zinc-500">
+          ... ({content.length - maxLength} more chars)
+        </span>
+      )}
     </pre>
   );
 }
@@ -363,7 +448,7 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
       <div className={expanded ? "w-full" : ""}>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/15 text-[11px] text-amber-400/90 transition-colors border border-amber-500/20"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--brand-warning)]/12 hover:bg-[var(--brand-warning)]/18 text-[11px] text-[var(--brand-warning)] transition-colors border border-[var(--brand-warning)]/30"
         >
           <Lightbulb size={12} className="opacity-70" />
           <span className="font-medium">thinking</span>
@@ -372,7 +457,7 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
           </span>
         </button>
         {expanded && (
-          <pre className="text-xs text-zinc-400 bg-zinc-900/80 border border-zinc-800 rounded-lg p-3 mt-2 whitespace-pre-wrap max-h-80 overflow-y-auto">
+          <pre className="text-xs text-[var(--brand-text-secondary)] bg-[var(--brand-bg-tertiary)]/90 border border-[var(--brand-border)] rounded-lg p-3 mt-2 whitespace-pre-wrap max-h-80 overflow-y-auto">
             {block.thinking}
           </pre>
         )}
@@ -382,7 +467,9 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
 
   if (block.type === "tool_use") {
     const input =
-      block.input && typeof block.input === "object" ? block.input as Record<string, unknown> : undefined;
+      block.input && typeof block.input === "object"
+        ? (block.input as Record<string, unknown>)
+        : undefined;
     const hasInput = input && Object.keys(input).length > 0;
     const Icon = getToolIcon(block.name || "");
     const preview = getToolPreview(block.name || "", input);
@@ -399,19 +486,26 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
       toolName === "askuserquestion" ||
       toolName === "task";
 
-    const shouldAutoExpand = toolName === "todowrite" || toolName === "askuserquestion" || toolName === "task";
+    const shouldAutoExpand =
+      toolName === "todowrite" ||
+      toolName === "askuserquestion" ||
+      toolName === "task";
     const isExpanded = expanded || shouldAutoExpand;
 
     return (
       <div className={isExpanded ? "w-full" : ""}>
         <button
-          onClick={() => hasInput && !shouldAutoExpand && setExpanded(!expanded)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-500/10 hover:bg-slate-500/15 text-[11px] text-slate-300 transition-colors border border-slate-500/20"
+          onClick={() =>
+            hasInput && !shouldAutoExpand && setExpanded(!expanded)
+          }
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--brand-info)]/10 hover:bg-[var(--brand-info)]/16 text-[11px] text-[var(--brand-text-secondary)] transition-colors border border-[var(--brand-info)]/30"
         >
           <Icon size={12} className="opacity-60" />
-          <span className="font-medium text-slate-200">{block.name}</span>
+          <span className="font-medium text-[var(--brand-text-primary)]">
+            {block.name}
+          </span>
           {preview && (
-            <span className="text-slate-500 font-normal truncate max-w-[200px]">
+            <span className="text-[var(--brand-text-muted)] font-normal truncate max-w-[200px]">
               {preview}
             </span>
           )}
@@ -426,7 +520,7 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
         ) : (
           expanded &&
           hasInput && (
-            <pre className="text-xs text-slate-300 bg-slate-900/50 border border-slate-700/50 rounded-lg p-3 mt-2 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto">
+            <pre className="text-xs text-[var(--brand-text-secondary)] bg-[var(--brand-bg-tertiary)]/80 border border-[var(--brand-border)]/70 rounded-lg p-3 mt-2 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto">
               {JSON.stringify(input, null, 2)}
             </pre>
           )
@@ -446,10 +540,12 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
     const previewLength = 60;
     const contentPreview =
       hasContent && !expanded
-        ? resultContent.slice(0, previewLength) + (resultContent.length > previewLength ? "..." : "")
+        ? resultContent.slice(0, previewLength) +
+          (resultContent.length > previewLength ? "..." : "")
         : null;
 
-    const toolName = block.tool_use_id && toolMap ? toolMap.get(block.tool_use_id) || "" : "";
+    const toolName =
+      block.tool_use_id && toolMap ? toolMap.get(block.tool_use_id) || "" : "";
 
     return (
       <div className={expanded ? "w-full" : ""}>
@@ -457,8 +553,8 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
           onClick={() => hasContent && setExpanded(!expanded)}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors border ${
             isError
-              ? "bg-rose-500/10 hover:bg-rose-500/15 text-rose-400/90 border-rose-500/20"
-              : "bg-teal-500/10 hover:bg-teal-500/15 text-teal-400/90 border-teal-500/20"
+              ? "bg-[var(--brand-danger)]/12 hover:bg-[var(--brand-danger)]/18 text-[var(--brand-danger)] border-[var(--brand-danger)]/30"
+              : "bg-[var(--brand-primary)]/12 hover:bg-[var(--brand-primary)]/18 text-[var(--brand-primary)] border-[var(--brand-primary)]/30"
           }`}
         >
           {isError ? (
@@ -469,7 +565,7 @@ function ContentBlockRenderer(props: ContentBlockRendererProps) {
           <span className="font-medium">{isError ? "error" : "result"}</span>
           {contentPreview && !expanded && (
             <span
-              className={`font-normal truncate max-w-[200px] ${isError ? "text-rose-500/70" : "text-teal-500/70"}`}
+              className={`font-normal truncate max-w-[200px] ${isError ? "text-[var(--brand-danger)]/80" : "text-[var(--brand-text-secondary)]"}`}
             >
               {contentPreview}
             </span>
