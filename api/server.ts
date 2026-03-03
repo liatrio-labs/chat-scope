@@ -322,7 +322,7 @@ export function createServer(options: ServerOptions) {
       startIndexRefresh();
       const openUrl = `http://localhost:${dev ? 12000 : port}/`;
 
-      console.log(`\n  claude-run is running at ${openUrl}\n`);
+      console.log(`\n  chat-scope is running at ${openUrl}\n`);
       if (!dev && shouldOpen) {
         open(openUrl).catch(console.error);
       }

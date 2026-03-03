@@ -1,6 +1,6 @@
 import { memo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { Session } from "@claude-run/api";
+import type { Session } from "@chat-scope/api";
 import { formatTime } from "../utils";
 
 interface IndexStatus {

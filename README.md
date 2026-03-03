@@ -1,13 +1,13 @@
 <div align="center">
 
-# Claude Run
+# Chat Scope
 
-Browse your Claude Code conversation history in a beautiful web UI
+Search and explore local AI coding assistant session history in a fast web UI
 
-[![npm version](https://img.shields.io/npm/v/claude-run.svg)](https://www.npmjs.com/package/claude-run)
+[![npm version](https://img.shields.io/npm/v/@liatrio/chat-scope.svg)](https://www.npmjs.com/package/@liatrio/chat-scope)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-<img src=".github/claude-run.gif" alt="Claude Run Demo" width="800" />
+<img src=".github/claude-run.gif" alt="Chat Scope Demo" width="800" />
 
 </div>
 
@@ -16,19 +16,18 @@ Browse your Claude Code conversation history in a beautiful web UI
 Run the project simply by executing
 
 ```bash
-npx claude-run
+npx @liatrio/chat-scope
 ```
 
 The browser will open automatically at http://localhost:12001.
 
 ## Features
 
-- **Real-time streaming** - Watch conversations update live as Claude responds
-- **Search** - Find sessions by prompt text or project name
-- **Filter by project** - Focus on specific projects
-- **Resume sessions** - Copy the resume command to continue any conversation in your terminal
-- **Collapsible sidebar** - Maximize your viewing area
-- **Dark mode** - Easy on the eyes
+- **Multi-provider support** - Aggregate sessions from Claude, Codex, OpenCode, and Cursor
+- **Transcript indexing and search** - Search message content across providers
+- **Provider and project filters** - Narrow results quickly
+- **Real-time updates** - Watch supported providers update live
+- **Session navigation tools** - Jump through matches and inspect transcript details
 - **Clean UI** - Familiar chat interface with collapsible tool calls
 
 ## Usage
@@ -36,19 +35,19 @@ The browser will open automatically at http://localhost:12001.
 Install globally via npm:
 
 ```bash
-npm install -g claude-run
+npm install -g @liatrio/chat-scope
 ```
 
 Then run it from any directory:
 
 ```bash
-claude-run
+chat-scope
 ```
 
-The browser will open automatically at http://localhost:12001, showing all your Claude Code conversations.
+The browser will open automatically at http://localhost:12001.
 
 ```bash
-claude-run [options]
+chat-scope [options]
 
 Options:
   -V, --version        Show version number
@@ -60,26 +59,26 @@ Options:
 
 ## How It Works
 
-Claude Code stores conversation history in `~/.claude/`. This tool reads that data and presents it in a web interface with:
+Chat Scope reads local session and transcript history from supported providers and presents it in a web interface with:
 
-- **Session list** - All your conversations, sorted by recency
-- **Project filter** - Focus on a specific project
+- **Session list** - Sessions sorted by recency across providers
+- **Provider filter** - Focus on a single source or search all
+- **Project filter** - Narrow by workspace or project
 - **Conversation view** - Full message history with tool calls
-- **Session header** - Shows conversation title, project name, and timestamp
-- **Resume command** - Copies the command to resume the conversation
-- **Real-time updates** - SSE streaming for live conversations
+- **Index-backed search** - Fast transcript search and result navigation
+- **Real-time updates** - SSE streaming for supported providers
 
 ## Requirements
 
 - Node.js 20+
-- Claude Code installed and used at least once
+- At least one supported local provider with existing session history
 
 ## Development
 
 ```bash
 # Clone the repo
-git clone https://github.com/kamranahmedse/claude-run.git
-cd claude-run
+git clone https://github.com/liatrio-labs/chat-scope.git
+cd chat-scope
 
 # Install dependencies
 pnpm install
@@ -91,6 +90,10 @@ pnpm dev
 pnpm build
 ```
 
+## Attribution
+
+Chat Scope is based on [claude-run](https://github.com/kamranahmedse/claude-run), licensed under MIT. See `THIRD_PARTY_NOTICES.md` for attribution details.
+
 ## License
 
-MIT © Kamran Ahmed
+MIT © Kamran Ahmed and contributors, Liatrio Labs contributors

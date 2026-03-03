@@ -1,24 +1,25 @@
 {
-  "name": "claude-run",
+  "name": "@liatrio/chat-scope",
   "version": "0.2.2",
-  "description": "A beautiful web UI for browsing Claude Code conversation history",
+  "description": "Search and explore AI coding assistant session history across multiple providers",
   "type": "module",
   "bin": {
-    "claude-run": "./dist/index.js"
+    "chat-scope": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
     "dist"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm dev:web\" \"pnpm dev:server\"",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:server\"",
     "dev:server": "tsx watch api/index.ts --dev",
     "dev:web": "vite --config web/vite.config.ts",
-    "build": "pnpm build:server && pnpm build:web",
+    "build": "npm run build:server && npm run build:web",
     "build:web": "vite build --config web/vite.config.ts",
     "build:server": "tsup api/index.ts --format esm --dts --clean",
     "start": "node dist/index.js",
-    "prepublishOnly": "pnpm build"
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -52,23 +53,26 @@
     "node": ">=20.0.0"
   },
   "keywords": [
+    "chat",
+    "session",
+    "index",
+    "search",
     "claude",
-    "claude-code",
+    "codex",
+    "cursor",
+    "opencode",
     "cli",
     "conversation",
-    "viewer",
-    "streaming",
-    "ai",
-    "anthropic"
+    "ai"
   ],
-  "author": "Kamran Ahmed",
+  "author": "Liatrio Labs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kamranahmedse/claude-run.git"
+    "url": "git+https://github.com/liatrio-labs/chat-scope.git"
   },
-  "homepage": "https://github.com/kamranahmedse/claude-run#readme",
+  "homepage": "https://github.com/liatrio-labs/chat-scope#readme",
   "bugs": {
-    "url": "https://github.com/kamranahmedse/claude-run/issues"
+    "url": "https://github.com/liatrio-labs/chat-scope/issues"
   }
 }

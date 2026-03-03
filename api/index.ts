@@ -21,16 +21,14 @@ function getVersion(): string {
 }
 
 program
-  .name("claude-run")
-  .description(
-    "A beautiful web UI for browsing Claude Code conversation history"
-  )
+  .name("chat-scope")
+  .description("Search and explore AI coding assistant session history")
   .version(getVersion())
   .option("-p, --port <number>", "Port to listen on", "12001")
   .option(
     "-d, --dir <path>",
-    "Claude directory path",
-    join(homedir(), ".claude")
+    "Claude data directory path",
+    join(homedir(), ".claude"),
   )
   .option("--dev", "Enable CORS for development")
   .option("--no-open", "Do not open browser automatically")

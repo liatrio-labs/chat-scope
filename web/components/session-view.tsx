@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import type { ConversationMessage, SessionProvider } from "@claude-run/api";
+import type { ConversationMessage, SessionProvider } from "@chat-scope/api";
 import MessageBlock from "./message-block";
 import ScrollToBottomButton from "./scroll-to-bottom-button";
 import ScrollToTopButton from "./scroll-to-top-button";
