@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { program } from "commander";
+import { Option } from "commander";
 import { createServer } from "./server";
 import { homedir } from "os";
 import { join } from "path";
@@ -22,13 +23,16 @@ function getVersion(): string {
 
 program
   .name("chat-scope")
-  .description("Search and explore AI coding assistant session history")
+  .description("Search and explore local AI session history across providers")
   .version(getVersion())
   .option("-p, --port <number>", "Port to listen on", "12001")
-  .option(
-    "-d, --dir <path>",
-    "Claude data directory path",
-    join(homedir(), ".claude"),
+  .addOption(
+    new Option("--claude-dir <path>", "Claude history directory path")
+      .default(join(homedir(), ".claude"))
+      .hideHelp(),
+  )
+  .addOption(
+    new Option("-d, --dir <path>", "Alias for --claude-dir").hideHelp(),
   )
   .option("--dev", "Enable CORS for development")
   .option("--no-open", "Do not open browser automatically")
@@ -36,14 +40,15 @@ program
 
 const opts = program.opts<{
   port: string;
-  dir: string;
+  claudeDir: string;
+  dir?: string;
   dev: boolean;
   open: boolean;
 }>();
 
 const server = createServer({
   port: parseInt(opts.port, 10),
-  claudeDir: opts.dir,
+  claudeDir: opts.dir ?? opts.claudeDir,
   dev: opts.dev,
   open: opts.open,
 });
