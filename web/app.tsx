@@ -20,22 +20,22 @@ function SessionHeader(props: SessionHeaderProps) {
     <>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-sm text-zinc-300 truncate max-w-xs">
+          <span className="text-sm text-[var(--brand-text-primary)] truncate max-w-xs font-medium">
             {session.display}
           </span>
-          <span className="text-xs text-zinc-500 shrink-0 uppercase tracking-wide">
+          <span className="text-xs text-[var(--brand-highlight)]/80 shrink-0 uppercase tracking-wide">
             {session.provider}
           </span>
-          <span className="text-xs text-zinc-600 shrink-0">
+          <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
             {session.projectName}
           </span>
-          <span className="text-xs text-zinc-600 shrink-0">
+          <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
             {formatTime(session.timestamp)}
           </span>
         </div>
         {showTranscriptPath && (
           <div
-            className="mt-1 text-[11px] text-zinc-500 truncate font-mono"
+            className="mt-1 text-[11px] text-[var(--brand-text-muted)] truncate font-mono"
             title={session.transcriptPath || "Path unavailable"}
           >
             {session.transcriptPath || "Path unavailable"}
@@ -45,17 +45,17 @@ function SessionHeader(props: SessionHeaderProps) {
       {session.canResume && (
         <button
           onClick={() => onCopyResumeCommand(session.sourceId, session.project)}
-          className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors cursor-pointer shrink-0"
+          className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[#0b2210] bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-hover)] rounded-[10px] transition-colors cursor-pointer shrink-0"
           title="Copy resume command to clipboard"
         >
           {copied ? (
             <>
-              <Check className="w-3.5 h-3.5 text-green-500" />
-              <span className="text-green-500">Copied!</span>
+              <Check className="w-3.5 h-3.5 text-[#0b2210]" />
+              <span className="text-[#0b2210] font-semibold">Copied!</span>
             </>
           ) : (
             <>
-              <Copy className="w-3.5 h-3.5" />
+              <Copy className="w-3.5 h-3.5 text-[#0b2210]" />
               <span>Copy Resume Command</span>
             </>
           )}
@@ -433,16 +433,16 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex h-screen bg-[var(--brand-bg-primary)] text-[var(--brand-text-primary)]">
       {!sidebarCollapsed && (
-        <aside className="w-80 border-r border-zinc-800/60 flex flex-col bg-zinc-950">
-          <div className="border-b border-zinc-800/60">
+        <aside className="w-80 border-r border-[var(--brand-border)]/80 flex flex-col bg-[var(--brand-bg-secondary)]/80 backdrop-blur-sm">
+          <div className="border-b border-[var(--brand-border)]/80">
             <label htmlFor={"select-project"} className="block w-full px-1">
               <select
                 id={"select-project"}
                 value={selectedProject || ""}
                 onChange={(e) => setSelectedProject(e.target.value || null)}
-                className="w-full h-[50px] bg-transparent text-zinc-300 text-sm focus:outline-none cursor-pointer px-5 py-4"
+                className="w-full h-[52px] bg-transparent text-[var(--brand-text-secondary)] text-sm focus:outline-none cursor-pointer px-5 py-4"
               >
                 <option value="">All Projects</option>
                 {projects.map((project) => {
@@ -456,7 +456,7 @@ function App() {
               </select>
             </label>
           </div>
-          <div className="border-b border-zinc-800/60">
+          <div className="border-b border-[var(--brand-border)]/80">
             <label htmlFor={"select-provider"} className="block w-full px-1">
               <select
                 id={"select-provider"}
@@ -464,7 +464,7 @@ function App() {
                 onChange={(e) =>
                   setSelectedProvider(e.target.value as ProviderFilter)
                 }
-                className="w-full h-[42px] bg-transparent text-zinc-300 text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
+                className="w-full h-[44px] bg-transparent text-[var(--brand-text-secondary)] text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
               >
                 <option value="all">All Providers</option>
                 <option value="claude">Claude</option>
@@ -489,17 +489,27 @@ function App() {
         </aside>
       )}
 
-      <main className="flex-1 overflow-hidden bg-zinc-950 flex flex-col">
-        <div className="h-[50px] border-b border-zinc-800/60 flex items-center px-4 gap-4">
+      <main className="flex-1 overflow-hidden bg-[var(--brand-bg-primary)] flex flex-col">
+        <div className="h-[56px] border-b border-[var(--brand-border)]/80 flex items-center px-4 gap-4 bg-[var(--brand-bg-secondary)]/50">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+            className="p-2 hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer"
             aria-label={
               sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
             }
           >
-            <PanelLeft className="w-4 h-4 text-zinc-400" />
+            <PanelLeft className="w-4 h-4 text-[var(--brand-text-secondary)]" />
           </button>
+          <div className="hidden md:flex items-center gap-2 border-r border-[var(--brand-border)]/70 pr-4 mr-1">
+            <img
+              src="https://www.liatrio.com/brand-logos/logo_Liatrio_reverse-preferred.svg"
+              alt="Liatrio"
+              className="h-5 w-auto"
+            />
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--brand-text-muted)]">
+              Session Viewer
+            </span>
+          </div>
           {selectedSessionData && (
             <SessionHeader
               session={selectedSessionData}
@@ -519,12 +529,12 @@ function App() {
               />
             ) : null
           ) : (
-            <div className="flex h-full items-center justify-center text-zinc-600">
+            <div className="flex h-full items-center justify-center text-[var(--brand-text-muted)]">
               <div className="text-center">
-                <div className="text-base mb-2 text-zinc-500">
+                <div className="text-xl mb-2 text-[var(--brand-text-secondary)] font-semibold">
                   Select a session
                 </div>
-                <div className="text-sm text-zinc-600">
+                <div className="text-sm text-[var(--brand-text-muted)]">
                   Choose a session from the list to view the conversation
                 </div>
               </div>

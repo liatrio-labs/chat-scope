@@ -216,14 +216,14 @@ function SessionView(props: SessionViewProps) {
 
     for (const mark of marks) {
       mark.dataset.searchActive = "0";
-      mark.classList.remove("bg-cyan-300", "ring-1", "ring-cyan-500");
-      mark.classList.add("bg-amber-300/80");
+      mark.style.backgroundColor = "rgba(137, 223, 0, 0.45)";
+      mark.style.boxShadow = "none";
     }
 
     const activeMark = marks[normalizedIndex];
     activeMark.dataset.searchActive = "1";
-    activeMark.classList.remove("bg-amber-300/80");
-    activeMark.classList.add("bg-cyan-300", "ring-1", "ring-cyan-500");
+    activeMark.style.backgroundColor = "rgba(36, 174, 29, 0.45)";
+    activeMark.style.boxShadow = "0 0 0 1px rgba(137, 223, 0, 0.9)";
 
     if (shouldScroll) {
       activeMark.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -312,7 +312,8 @@ function SessionView(props: SessionViewProps) {
 
         const mark = document.createElement("mark");
         mark.setAttribute("data-search-highlight", "1");
-        mark.className = "bg-amber-300/80 text-zinc-950 px-0.5 rounded-sm";
+        mark.className = "text-[var(--brand-text-primary)] px-0.5 rounded-sm";
+        mark.style.backgroundColor = "rgba(137, 223, 0, 0.45)";
         mark.textContent = original.slice(index, index + match[0].length);
         fragment.appendChild(mark);
         cursor = index + match[0].length;
@@ -348,7 +349,7 @@ function SessionView(props: SessionViewProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-zinc-500">
+      <div className="flex h-full items-center justify-center text-[var(--brand-text-muted)]">
         Loading...
       </div>
     );
@@ -359,9 +360,9 @@ function SessionView(props: SessionViewProps) {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto bg-zinc-950"
+        className="h-full overflow-y-auto bg-[var(--brand-bg-primary)]"
       >
-        <div className="sticky top-0 z-20 border-b border-zinc-800/70 bg-zinc-950/95 backdrop-blur px-4 py-2">
+        <div className="sticky top-0 z-20 border-b border-[var(--brand-border)]/75 bg-[var(--brand-bg-secondary)]/95 backdrop-blur px-4 py-3">
           <div className="mx-auto max-w-3xl flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <input
@@ -369,12 +370,12 @@ function SessionView(props: SessionViewProps) {
                 value={transcriptSearchQuery}
                 onChange={(e) => setTranscriptSearchQuery(e.target.value)}
                 placeholder="Search in transcript..."
-                className="w-full max-w-sm rounded border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-600"
+                className="w-full max-w-sm rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/85 px-2.5 py-2 text-xs text-[var(--brand-text-primary)] placeholder:text-[var(--brand-text-muted)] focus:outline-none focus:border-[var(--brand-primary)]"
               />
               {normalizedTranscriptQuery && (
                 <button
                   onClick={() => setTranscriptSearchQuery("")}
-                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80"
+                  className="rounded-[10px] border border-[var(--brand-border-soft)] px-2 py-1 text-[11px] text-[var(--brand-text-secondary)] hover:bg-[var(--brand-bg-tertiary)]/85"
                 >
                   Clear
                 </button>
@@ -382,7 +383,7 @@ function SessionView(props: SessionViewProps) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <div className="text-xs text-zinc-300 min-w-[160px] text-right">
+              <div className="text-xs text-[var(--brand-text-secondary)] min-w-[160px] text-right">
                 {normalizedTranscriptQuery
                   ? matchCount > 0
                     ? `Matches ${activeMatchIndex + 1}/${matchCount}`
@@ -392,14 +393,14 @@ function SessionView(props: SessionViewProps) {
               <button
                 onClick={goToPreviousMatch}
                 disabled={matchCount === 0}
-                className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-[10px] border border-[var(--brand-border-soft)] px-2 py-1 text-[11px] text-[var(--brand-text-secondary)] hover:bg-[var(--brand-bg-tertiary)]/85 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Prev
               </button>
               <button
                 onClick={goToNextMatch}
                 disabled={matchCount === 0}
-                className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-[10px] border border-[var(--brand-border-soft)] px-2 py-1 text-[11px] text-[var(--brand-text-secondary)] hover:bg-[var(--brand-bg-tertiary)]/85 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
               </button>
@@ -409,11 +410,11 @@ function SessionView(props: SessionViewProps) {
 
         <div className="mx-auto max-w-3xl px-4 py-4">
           {summary && (
-            <div className="mb-6 rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
-              <h2 className="text-sm font-medium text-zinc-200 leading-relaxed">
+            <div className="mb-6 rounded-[14px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)]/75 p-4 shadow-[var(--brand-shadow)]">
+              <h2 className="text-sm font-semibold text-[var(--brand-text-primary)] leading-relaxed">
                 {summary.summary}
               </h2>
-              <p className="mt-2 text-[11px] text-zinc-500">
+              <p className="mt-2 text-[11px] text-[var(--brand-text-muted)]">
                 {conversationMessages.length} messages
               </p>
             </div>

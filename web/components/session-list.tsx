@@ -60,9 +60,9 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
   });
 
   return (
-    <div className="h-full overflow-hidden bg-zinc-950 flex flex-col">
-      <div className="px-3 py-2 border-b border-zinc-800/60">
-        <div className="flex items-center gap-2 text-zinc-500">
+    <div className="h-full overflow-hidden bg-[var(--brand-bg-secondary)]/40 flex flex-col">
+      <div className="px-3 py-3 border-b border-[var(--brand-border)]/80">
+        <div className="flex items-center gap-2 text-[var(--brand-text-muted)] rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-3 py-2">
           <svg
             className="w-4 h-4 flex-shrink-0"
             fill="none"
@@ -81,12 +81,12 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search..."
-            className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-[var(--brand-text-primary)] placeholder:text-[var(--brand-text-muted)] focus:outline-none"
           />
           {search && (
             <button
               onClick={() => onSearchChange("")}
-              className="text-zinc-600 hover:text-zinc-400 transition-colors"
+              className="text-[var(--brand-text-muted)] hover:text-[var(--brand-text-secondary)] transition-colors"
             >
               <svg
                 className="w-4 h-4"
@@ -105,7 +105,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
           )}
           {searching && (
             <svg
-              className="w-4 h-4 text-zinc-500 animate-spin"
+              className="w-4 h-4 text-[var(--brand-primary)] animate-spin"
               fill="none"
               viewBox="0 0 24 24"
               aria-label="Searching"
@@ -128,13 +128,13 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
         </div>
       </div>
 
-      <div className="px-3 py-2 border-b border-zinc-800/60 bg-zinc-950/90">
+      <div className="px-3 py-3 border-b border-[var(--brand-border)]/80 bg-[var(--brand-bg-secondary)]/90">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--brand-text-muted)]">
               Index Status
             </div>
-            <div className="text-xs text-zinc-300 mt-0.5">
+            <div className="text-xs text-[var(--brand-text-secondary)] mt-0.5">
               {indexStatus.state === "indexing"
                 ? `Indexing ${indexStatus.progress.indexedSessions}/${indexStatus.progress.totalSessions}`
                 : indexStatus.state === "ready"
@@ -144,7 +144,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
                     : "Idle"}
             </div>
             {indexStatus.state === "indexing" && (
-              <div className="text-[10px] text-zinc-500 mt-1">
+              <div className="text-[10px] text-[var(--brand-highlight)]/90 mt-1">
                 {indexStatus.progress.currentProvider
                   ? `Provider: ${indexStatus.progress.currentProvider}`
                   : "Preparing..."}
@@ -152,14 +152,14 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
             )}
             {indexStatus.state === "error" && indexStatus.lastError && (
               <div
-                className="text-[10px] text-rose-400 mt-1 truncate"
+                className="text-[10px] text-[var(--brand-danger)] mt-1 truncate"
                 title={indexStatus.lastError}
               >
                 {indexStatus.lastError}
               </div>
             )}
             {indexStatus.lastRefreshAt && (
-              <div className="text-[10px] text-zinc-600 mt-1">
+              <div className="text-[10px] text-[var(--brand-text-muted)] mt-1">
                 Updated {formatTime(indexStatus.lastRefreshAt)}
               </div>
             )}
@@ -170,7 +170,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
               void onRefreshIndex();
             }}
             disabled={indexStatus.state === "indexing"}
-            className="shrink-0 rounded border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-300 hover:bg-zinc-800/80 disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-[10px] border border-[var(--brand-border-soft)] px-2.5 py-1 text-[10px] uppercase tracking-wide text-[var(--brand-text-secondary)] hover:bg-[var(--brand-bg-tertiary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Refresh
           </button>
@@ -181,7 +181,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <svg
-              className="w-5 h-5 text-zinc-600 animate-spin"
+              className="w-5 h-5 text-[var(--brand-primary)] animate-spin"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -201,7 +201,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
             </svg>
           </div>
         ) : sessions.length === 0 ? (
-          <p className="py-8 text-center text-xs text-zinc-600">
+          <p className="py-8 text-center text-xs text-[var(--brand-text-muted)]">
             {search ? "No sessions match" : "No sessions found"}
           </p>
         ) : (
@@ -227,35 +227,35 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
                     width: "100%",
                     transform: `translateY(${virtualItem.start}px)`,
                   }}
-                  className={`px-3 py-3.5 text-left transition-colors overflow-hidden border-b border-zinc-800/40 ${
+                  className={`px-3 py-3.5 text-left transition-colors overflow-hidden border-b border-[var(--brand-border)]/40 ${
                     selectedSession === session.id
-                      ? "bg-cyan-700/30"
-                      : "hover:bg-zinc-900/60"
-                  } ${virtualItem.index === 0 ? "border-t border-t-zinc-800/40" : ""}`}
+                      ? "bg-[var(--brand-primary)]/14"
+                      : "hover:bg-[var(--brand-bg-tertiary)]/65"
+                  } ${virtualItem.index === 0 ? "border-t border-t-[var(--brand-border)]/40" : ""}`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">
+                      <span className="text-[10px] text-[var(--brand-highlight)]/85 font-medium uppercase tracking-wide">
                         {session.provider}
                       </span>
-                      <span className="text-[10px] text-zinc-500 font-medium truncate">
+                      <span className="text-[10px] text-[var(--brand-text-muted)] font-medium truncate">
                         {session.projectName}
                       </span>
                     </div>
-                    <span className="text-[10px] text-zinc-600">
+                    <span className="text-[10px] text-[var(--brand-text-muted)]">
                       {formatTime(session.timestamp)}
                     </span>
                   </div>
                   {search.trim().length > 0 &&
                     searchHitsBySessionId[session.id] > 0 && (
                       <div className="mb-1">
-                        <span className="inline-flex rounded-md border border-cyan-500/30 bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-200">
+                        <span className="inline-flex rounded-md border border-[var(--brand-primary)]/40 bg-[var(--brand-primary)]/18 px-1.5 py-0.5 text-[10px] text-[var(--brand-highlight)]">
                           {searchHitsBySessionId[session.id]} hit
                           {searchHitsBySessionId[session.id] !== 1 ? "s" : ""}
                         </span>
                       </div>
                     )}
-                  <p className="text-[12px] text-zinc-300 leading-snug line-clamp-2 break-words">
+                  <p className="text-[12px] text-[var(--brand-text-secondary)] leading-snug line-clamp-2 break-words">
                     {session.display}
                   </p>
                 </button>
@@ -265,8 +265,8 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
         )}
       </div>
 
-      <div className="px-3 py-2 border-t border-zinc-800/60">
-        <div className="text-[10px] text-zinc-600 text-center">
+      <div className="px-3 py-2 border-t border-[var(--brand-border)]/70">
+        <div className="text-[10px] text-[var(--brand-text-muted)] text-center">
           {sessions.length} session{sessions.length !== 1 ? "s" : ""}
         </div>
       </div>
