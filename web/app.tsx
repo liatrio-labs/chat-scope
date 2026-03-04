@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Session, SessionProvider } from "@chat-scope/api";
-import { PanelLeft, Copy, Check, FileDown, ChevronDown } from "lucide-react";
+import { Copy, Check, FileDown, ChevronDown } from "lucide-react";
 import { formatTime } from "./utils";
 import SessionList from "./components/session-list";
 import SessionView from "./components/session-view";
+import ProjectTreePicker from "./components/project-tree-picker";
 import { useEventSource } from "./hooks/use-event-source";
 
 interface SessionHeaderProps {
@@ -173,26 +174,134 @@ function SessionHeader(props: SessionHeaderProps) {
     <div className="min-w-0 flex-1 rounded-[14px] border border-[var(--brand-border)]/70 bg-[var(--brand-bg-secondary)]/55 px-4 py-3">
       <div className="flex flex-col gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="text-base text-[var(--brand-text-primary)] truncate font-semibold">
-              {session.display}
-            </span>
-            <span className="text-xs text-[var(--brand-highlight)]/90 shrink-0 uppercase tracking-wide font-semibold">
-              {session.provider}
-            </span>
-            <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
-              {session.projectName}
-            </span>
-            <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
-              {formatTime(session.timestamp)}
-            </span>
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-[var(--brand-highlight)]/90 uppercase tracking-wide font-semibold">
+                {session.provider}
+              </span>
+              <span className="text-xs text-[var(--brand-text-muted)]">
+                Updated {formatTime(session.timestamp)}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 shrink-0">
+              {primaryResumeCommand && (
+                <div className="relative flex items-center" ref={resumeMenuRef}>
+                  <button
+                    onClick={() =>
+                      void copyCommand(
+                        primaryResumeCommand.label,
+                        primaryResumeCommand.command,
+                      )
+                    }
+                    className="h-9 flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-l-[10px] border-r-0 transition-colors cursor-pointer"
+                    title={primaryResumeCommand.command}
+                  >
+                    {copiedCommandLabel === primaryResumeCommand.label ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-[var(--brand-highlight)]" />
+                        <span className="font-semibold text-[var(--brand-highlight)]">
+                          Copied
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Resume</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResumeMenuOpen((open) => !open);
+                      setExportMenuOpen(false);
+                    }}
+                    className="h-9 px-2 py-1.5 text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-r-[10px] transition-colors cursor-pointer"
+                    aria-label="Show resume command options"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+
+                  {resumeMenuOpen && (
+                    <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
+                      {resumeCommands.map((option) => (
+                        <button
+                          key={option.label}
+                          onClick={() => {
+                            void copyCommand(option.label, option.command);
+                            setResumeMenuOpen(false);
+                          }}
+                          className="w-full text-left rounded-[8px] px-2.5 py-2 hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
+                          title={option.command}
+                        >
+                          <div className="text-xs text-[var(--brand-text-primary)]">
+                            {option.label}
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-[var(--brand-text-muted)] truncate font-mono">
+                            {option.command}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  onClick={() => {
+                    setExportMenuOpen((open) => !open);
+                    setResumeMenuOpen(false);
+                  }}
+                  disabled={Boolean(exportingFormat)}
+                  className="h-9 flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>
+                    {exportingFormat
+                      ? `Exporting ${exportingFormat.toUpperCase()}...`
+                      : "Export"}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+
+                {exportMenuOpen && !exportingFormat && (
+                  <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-40 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
+                    {(["markdown", "html", "pdf"] as ExportFormat[]).map(
+                      (format) => (
+                        <button
+                          key={format}
+                          onClick={() => {
+                            onExportConversation(session, format);
+                            setExportMenuOpen(false);
+                          }}
+                          className="w-full text-left rounded-[8px] px-2.5 py-2 text-xs text-[var(--brand-text-primary)] hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
+                        >
+                          Export as {format.toUpperCase()}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 text-base text-[var(--brand-text-primary)] truncate font-semibold">
+            {session.display}
+          </div>
+          <div
+            className="mt-1 text-[11px] text-[var(--brand-text-muted)] font-mono break-all"
+            title={session.project}
+          >
+            Project Path: {session.project}
           </div>
           {showTranscriptPath && (
             <div
               className="mt-1 text-[11px] text-[var(--brand-text-muted)] truncate font-mono"
               title={session.transcriptPath || "Path unavailable"}
             >
-              {session.transcriptPath || "Path unavailable"}
+              Transcript: {session.transcriptPath || "Path unavailable"}
             </div>
           )}
         </div>
@@ -226,108 +335,6 @@ function SessionHeader(props: SessionHeaderProps) {
               </span>
             </>
           )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 shrink-0">
-          {primaryResumeCommand && (
-            <div className="relative flex items-center" ref={resumeMenuRef}>
-              <button
-                onClick={() =>
-                  void copyCommand(
-                    primaryResumeCommand.label,
-                    primaryResumeCommand.command,
-                  )
-                }
-                className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-l-[10px] border-r-0 transition-colors cursor-pointer"
-                title={primaryResumeCommand.command}
-              >
-                {copiedCommandLabel === primaryResumeCommand.label ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-[var(--brand-highlight)]" />
-                    <span className="font-semibold text-[var(--brand-highlight)]">
-                      Copied
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Resume</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setResumeMenuOpen((open) => !open);
-                  setExportMenuOpen(false);
-                }}
-                className="h-full px-2 py-1.5 text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-r-[10px] transition-colors cursor-pointer"
-                aria-label="Show resume command options"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-
-              {resumeMenuOpen && (
-                <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
-                  {resumeCommands.map((option) => (
-                    <button
-                      key={option.label}
-                      onClick={() => {
-                        void copyCommand(option.label, option.command);
-                        setResumeMenuOpen(false);
-                      }}
-                      className="w-full text-left rounded-[8px] px-2.5 py-2 hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
-                      title={option.command}
-                    >
-                      <div className="text-xs text-[var(--brand-text-primary)]">
-                        {option.label}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-[var(--brand-text-muted)] truncate font-mono">
-                        {option.command}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="relative" ref={exportMenuRef}>
-            <button
-              onClick={() => {
-                setExportMenuOpen((open) => !open);
-                setResumeMenuOpen(false);
-              }}
-              disabled={Boolean(exportingFormat)}
-              className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              <span>
-                {exportingFormat
-                  ? `Exporting ${exportingFormat.toUpperCase()}...`
-                  : "Export"}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-
-            {exportMenuOpen && !exportingFormat && (
-              <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-40 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
-                {(["markdown", "html", "pdf"] as ExportFormat[]).map(
-                  (format) => (
-                    <button
-                      key={format}
-                      onClick={() => {
-                        onExportConversation(session, format);
-                        setExportMenuOpen(false);
-                      }}
-                      className="w-full text-left rounded-[8px] px-2.5 py-2 text-xs text-[var(--brand-text-primary)] hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
-                    >
-                      Export as {format.toUpperCase()}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -443,7 +450,6 @@ function App() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessionMetrics, setSessionMetrics] =
     useState<ConversationMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -784,82 +790,58 @@ function App() {
 
   return (
     <div className="flex h-screen bg-[var(--brand-bg-primary)] text-[var(--brand-text-primary)]">
-      {!sidebarCollapsed && (
-        <aside className="w-80 border-r border-[var(--brand-border)]/80 flex flex-col bg-[var(--brand-bg-secondary)]/80 backdrop-blur-sm">
-          <div className="border-b border-[var(--brand-border)]/80">
-            <label htmlFor={"select-project"} className="block w-full px-1">
-              <select
-                id={"select-project"}
-                value={selectedProject || ""}
-                onChange={(e) => setSelectedProject(e.target.value || null)}
-                className="w-full h-[52px] bg-transparent text-[var(--brand-text-secondary)] text-sm focus:outline-none cursor-pointer px-5 py-4"
-              >
-                <option value="">All Projects</option>
-                {projects.map((project) => {
-                  const name = project.split("/").pop() || project;
-                  return (
-                    <option key={project} value={project}>
-                      {name}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-          </div>
-          <div className="border-b border-[var(--brand-border)]/80">
-            <label htmlFor={"select-provider"} className="block w-full px-1">
-              <select
-                id={"select-provider"}
-                value={selectedProvider}
-                onChange={(e) =>
-                  setSelectedProvider(e.target.value as ProviderFilter)
-                }
-                className="w-full h-[44px] bg-transparent text-[var(--brand-text-secondary)] text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
-              >
-                <option value="all">All Providers</option>
-                <option value="claude">Claude</option>
-                <option value="codex">Codex</option>
-                <option value="opencode">OpenCode</option>
-                <option value="cursor">Cursor</option>
-              </select>
-            </label>
-          </div>
-          <SessionList
-            sessions={filteredSessions}
-            search={searchQuery}
-            searching={searching}
-            onSearchChange={setSearchQuery}
-            searchHitsBySessionId={searchHitsBySessionId}
-            indexStatus={indexStatus}
-            onRefreshIndex={triggerIndexRefresh}
-            selectedSession={selectedSession}
-            onSelectSession={handleSelectSession}
-            loading={loading}
+      <aside className="w-80 border-r border-[var(--brand-border)]/80 flex flex-col bg-[var(--brand-bg-secondary)]/80 backdrop-blur-sm">
+        <div className="h-[56px] border-b border-[var(--brand-border)]/80 flex items-center px-4">
+          <img
+            src="/brand/liatrio-labs-horizontal-color-transparent.svg"
+            alt="ChatScope"
+            className="h-6 w-auto"
           />
-        </aside>
-      )}
+          <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[var(--brand-text-muted)]">
+            ChatScope
+          </span>
+        </div>
+
+        <ProjectTreePicker
+          projects={projects}
+          selectedProject={selectedProject}
+          onSelectProject={setSelectedProject}
+        />
+
+        <div className="border-b border-[var(--brand-border)]/80">
+          <label htmlFor={"select-provider"} className="block w-full px-1">
+            <select
+              id={"select-provider"}
+              value={selectedProvider}
+              onChange={(e) =>
+                setSelectedProvider(e.target.value as ProviderFilter)
+              }
+              className="w-full h-[44px] bg-transparent text-[var(--brand-text-secondary)] text-xs focus:outline-none cursor-pointer px-5 py-3 uppercase tracking-wide"
+            >
+              <option value="all">All Providers</option>
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="opencode">OpenCode</option>
+              <option value="cursor">Cursor</option>
+            </select>
+          </label>
+        </div>
+        <SessionList
+          sessions={filteredSessions}
+          search={searchQuery}
+          searching={searching}
+          onSearchChange={setSearchQuery}
+          searchHitsBySessionId={searchHitsBySessionId}
+          indexStatus={indexStatus}
+          onRefreshIndex={triggerIndexRefresh}
+          selectedSession={selectedSession}
+          onSelectSession={handleSelectSession}
+          loading={loading}
+        />
+      </aside>
 
       <main className="flex-1 overflow-hidden bg-[var(--brand-bg-primary)] flex flex-col">
         <div className="border-b border-[var(--brand-border)]/80 flex items-center px-4 py-3 gap-4 bg-[var(--brand-bg-secondary)]/50">
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer"
-            aria-label={
-              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
-          >
-            <PanelLeft className="w-4 h-4 text-[var(--brand-text-secondary)]" />
-          </button>
-          <div className="hidden md:flex items-center gap-2 border-r border-[var(--brand-border)]/70 pr-4 mr-1">
-            <img
-              src="https://www.liatrio.com/brand-logos/logo_Liatrio_reverse-preferred.svg"
-              alt="Liatrio"
-              className="h-5 w-auto"
-            />
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--brand-text-muted)]">
-              Session Viewer
-            </span>
-          </div>
           {selectedSessionData && (
             <SessionHeader
               session={selectedSessionData}
