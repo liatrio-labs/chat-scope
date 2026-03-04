@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Session, SessionProvider } from "@chat-scope/api";
-import { PanelLeft, Copy, Check } from "lucide-react";
+import { PanelLeft, Copy, Check, FileDown } from "lucide-react";
 import { formatTime } from "./utils";
 import SessionList from "./components/session-list";
 import SessionView from "./components/session-view";
@@ -10,11 +10,20 @@ interface SessionHeaderProps {
   session: Session;
   copied: boolean;
   showTranscriptPath: boolean;
+  exportingFormat: ExportFormat | null;
   onCopyResumeCommand: (sourceId: string, projectPath: string) => void;
+  onExportConversation: (session: Session, format: ExportFormat) => void;
 }
 
 function SessionHeader(props: SessionHeaderProps) {
-  const { session, copied, showTranscriptPath, onCopyResumeCommand } = props;
+  const {
+    session,
+    copied,
+    showTranscriptPath,
+    exportingFormat,
+    onCopyResumeCommand,
+    onExportConversation,
+  } = props;
 
   return (
     <>
@@ -61,12 +70,43 @@ function SessionHeader(props: SessionHeaderProps) {
           )}
         </button>
       )}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {(["markdown", "html", "pdf"] as ExportFormat[]).map((format) => {
+          const isExporting = exportingFormat === format;
+          return (
+            <button
+              key={format}
+              onClick={() => onExportConversation(session, format)}
+              disabled={Boolean(exportingFormat)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title={`Export as ${format}`}
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>{isExporting ? "Exporting..." : format.toUpperCase()}</span>
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 }
 
 type ProviderFilter = SessionProvider | "all";
+type ExportFormat = "markdown" | "html" | "pdf";
 const SEARCH_QUERY_PARAM = "q";
+
+function getFileNameFromDisposition(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/filename="([^"]+)"/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return match[1];
+}
 
 function getInitialSearchQuery(): string {
   if (typeof window === "undefined") {
@@ -162,6 +202,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
+    null,
+  );
 
   const handleCopyResumeCommand = useCallback(
     (sessionId: string, projectPath: string) => {
@@ -432,6 +475,40 @@ function App() {
     setSelectedSession(sessionId);
   }, []);
 
+  const handleExportConversation = useCallback(
+    async (session: Session, format: ExportFormat) => {
+      setExportingFormat(format);
+      try {
+        const response = await fetch(
+          `/api/conversation/${encodeURIComponent(session.id)}/export?format=${format}`,
+        );
+
+        if (!response.ok) {
+          throw new Error(`Export failed with status ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get("Content-Disposition");
+        const fileName =
+          getFileNameFromDisposition(disposition) ||
+          `${session.provider}-${session.sourceId}.${format === "markdown" ? "md" : format}`;
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch (error) {
+        console.error("Failed to export conversation", error);
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [],
+  );
+
   return (
     <div className="flex h-screen bg-[var(--brand-bg-primary)] text-[var(--brand-text-primary)]">
       {!sidebarCollapsed && (
@@ -515,7 +592,9 @@ function App() {
               session={selectedSessionData}
               copied={copied}
               showTranscriptPath={Boolean(searchQuery.trim())}
+              exportingFormat={exportingFormat}
               onCopyResumeCommand={handleCopyResumeCommand}
+              onExportConversation={handleExportConversation}
             />
           )}
         </div>

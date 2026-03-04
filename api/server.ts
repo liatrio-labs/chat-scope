@@ -16,6 +16,7 @@ import {
   normalizeProvider,
   invalidateHistoryCache,
   addToFileIndex,
+  type Session,
 } from "./storage";
 import {
   getIndexStatus,
@@ -23,6 +24,11 @@ import {
   startIndexRefresh,
   type IndexStatus,
 } from "./indexer";
+import {
+  exportConversation,
+  getExportFileName,
+  type ExportFormat,
+} from "./export";
 import {
   initWatcher,
   startWatcher,
@@ -69,6 +75,11 @@ export function createServer(options: ServerOptions) {
   initWatcher(getClaudeDir());
 
   const app = new Hono();
+
+  const getSessionById = async (sessionId: string): Promise<Session | null> => {
+    const sessions = await getSessions("all");
+    return sessions.find((session) => session.id === sessionId) ?? null;
+  };
 
   if (dev) {
     app.use(
@@ -214,6 +225,53 @@ export function createServer(options: ServerOptions) {
     const sessionId = c.req.param("id");
     const messages = await getConversation(sessionId);
     return c.json(messages);
+  });
+
+  app.get("/api/conversation/:id/export", async (c) => {
+    const sessionId = c.req.param("id");
+    const requestedFormat = c.req.query("format") ?? "markdown";
+
+    if (
+      requestedFormat !== "markdown" &&
+      requestedFormat !== "html" &&
+      requestedFormat !== "pdf"
+    ) {
+      return c.json(
+        {
+          error: "Invalid export format. Use markdown, html, or pdf.",
+        },
+        400,
+      );
+    }
+
+    const format = requestedFormat as ExportFormat;
+    const session = await getSessionById(sessionId);
+    if (!session) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    const messages = await getConversation(sessionId);
+    if (messages.length === 0) {
+      return c.json({ error: "No conversation messages found" }, 404);
+    }
+
+    try {
+      const exported = await exportConversation(session, messages, format);
+      const fileName = getExportFileName(session, format);
+      const bodyContent =
+        typeof exported.content === "string"
+          ? exported.content
+          : Uint8Array.from(exported.content);
+
+      return c.body(bodyContent, 200, {
+        "Content-Type": exported.mimeType,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      return c.json({ error: "Failed to generate export" }, 500);
+    }
   });
 
   app.get("/api/conversation/:id/stream", async (c) => {
