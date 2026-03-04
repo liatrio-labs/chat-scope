@@ -30,6 +30,7 @@ import {
   getExportFileName,
   type ExportFormat,
 } from "./export";
+import { calculateConversationMetrics } from "./metrics";
 import {
   initWatcher,
   startWatcher,
@@ -229,6 +230,17 @@ export function createServer(options: ServerOptions) {
     const sessionId = c.req.param("id");
     const messages = await getConversation(sessionId);
     return c.json(messages);
+  });
+
+  app.get("/api/conversation/:id/metrics", async (c) => {
+    const sessionId = c.req.param("id");
+    const session = await getSessionById(sessionId);
+    if (!session) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    const messages = await getConversation(sessionId);
+    return c.json(calculateConversationMetrics(messages));
   });
 
   app.get("/api/conversation/:id/export", async (c) => {

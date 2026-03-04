@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Session, SessionProvider } from "@chat-scope/api";
-import { PanelLeft, Copy, Check, FileDown } from "lucide-react";
+import { PanelLeft, Copy, Check, FileDown, ChevronDown } from "lucide-react";
 import { formatTime } from "./utils";
 import SessionList from "./components/session-list";
 import SessionView from "./components/session-view";
@@ -8,86 +8,329 @@ import { useEventSource } from "./hooks/use-event-source";
 
 interface SessionHeaderProps {
   session: Session;
-  copied: boolean;
   showTranscriptPath: boolean;
   exportingFormat: ExportFormat | null;
-  onCopyResumeCommand: (sourceId: string, projectPath: string) => void;
+  metrics: ConversationMetrics | null;
+  metricsLoading: boolean;
   onExportConversation: (session: Session, format: ExportFormat) => void;
+}
+
+interface ConversationMetrics {
+  turnUnits: number;
+  exchangeCount: number;
+  userMessageCount: number;
+  assistantMessageCount: number;
+  userCharacters: number;
+  assistantCharacters: number;
+  totalCharacters: number;
+  userPercent: number;
+  assistantPercent: number;
+  ratioLabel: string;
+  toolEventCount: number;
+}
+
+interface ResumeCommandOption {
+  label: string;
+  command: string;
+}
+
+function quoteShellPath(path: string): string {
+  return `"${path.split('"').join('\\"')}"`;
+}
+
+function getCursorTranscriptId(sourceId: string): string {
+  const separatorIndex = sourceId.indexOf(":");
+  if (separatorIndex < 0) {
+    return sourceId;
+  }
+  return sourceId.slice(separatorIndex + 1);
+}
+
+function getResumeCommands(session: Session): ResumeCommandOption[] {
+  const projectPrefix = `cd ${quoteShellPath(session.project)} && `;
+
+  if (session.provider === "claude") {
+    return [
+      {
+        label: "Claude Resume",
+        command: `${projectPrefix}claude --resume ${session.sourceId}`,
+      },
+      {
+        label: "Claude Short Flag",
+        command: `${projectPrefix}claude -r ${session.sourceId}`,
+      },
+    ];
+  }
+
+  if (session.provider === "codex") {
+    return [
+      {
+        label: "Codex Resume",
+        command: `${projectPrefix}codex resume ${session.sourceId}`,
+      },
+      {
+        label: "Codex Exec Resume",
+        command: `${projectPrefix}codex exec resume ${session.sourceId}`,
+      },
+    ];
+  }
+
+  if (session.provider === "opencode") {
+    return [
+      {
+        label: "OpenCode Session",
+        command: `${projectPrefix}opencode --session ${session.sourceId}`,
+      },
+      {
+        label: "OpenCode Continue Last",
+        command: `${projectPrefix}opencode --continue`,
+      },
+    ];
+  }
+
+  if (session.provider === "cursor") {
+    const chatId = getCursorTranscriptId(session.sourceId);
+    return [
+      {
+        label: "Cursor Resume",
+        command: `${projectPrefix}cursor-agent --resume ${chatId}`,
+      },
+      {
+        label: "Cursor Continue Last",
+        command: `${projectPrefix}cursor-agent --continue`,
+      },
+      {
+        label: "Open Cursor Workspace",
+        command: `${projectPrefix}cursor .`,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat().format(value);
 }
 
 function SessionHeader(props: SessionHeaderProps) {
   const {
     session,
-    copied,
     showTranscriptPath,
     exportingFormat,
-    onCopyResumeCommand,
+    metrics,
+    metricsLoading,
     onExportConversation,
   } = props;
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [resumeMenuOpen, setResumeMenuOpen] = useState(false);
+  const [copiedCommandLabel, setCopiedCommandLabel] = useState<string | null>(
+    null,
+  );
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const resumeMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const resumeCommands = useMemo(() => getResumeCommands(session), [session]);
+  const primaryResumeCommand = resumeCommands[0];
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const outsideExportMenu = exportMenuRef.current
+        ? !exportMenuRef.current.contains(target)
+        : true;
+      const outsideResumeMenu = resumeMenuRef.current
+        ? !resumeMenuRef.current.contains(target)
+        : true;
+
+      if (outsideExportMenu && outsideResumeMenu) {
+        setExportMenuOpen(false);
+        setResumeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const copyCommand = useCallback(async (label: string, command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommandLabel(label);
+      setTimeout(() => {
+        setCopiedCommandLabel((current) =>
+          current === label ? null : current,
+        );
+      }, 1800);
+    } catch (error) {
+      console.error("Failed to copy resume command", error);
+    }
+  }, []);
 
   return (
-    <>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-sm text-[var(--brand-text-primary)] truncate max-w-xs font-medium">
-            {session.display}
-          </span>
-          <span className="text-xs text-[var(--brand-highlight)]/80 shrink-0 uppercase tracking-wide">
-            {session.provider}
-          </span>
-          <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
-            {session.projectName}
-          </span>
-          <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
-            {formatTime(session.timestamp)}
-          </span>
-        </div>
-        {showTranscriptPath && (
-          <div
-            className="mt-1 text-[11px] text-[var(--brand-text-muted)] truncate font-mono"
-            title={session.transcriptPath || "Path unavailable"}
-          >
-            {session.transcriptPath || "Path unavailable"}
+    <div className="min-w-0 flex-1 rounded-[14px] border border-[var(--brand-border)]/70 bg-[var(--brand-bg-secondary)]/55 px-4 py-3">
+      <div className="flex flex-col gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-base text-[var(--brand-text-primary)] truncate font-semibold">
+              {session.display}
+            </span>
+            <span className="text-xs text-[var(--brand-highlight)]/90 shrink-0 uppercase tracking-wide font-semibold">
+              {session.provider}
+            </span>
+            <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
+              {session.projectName}
+            </span>
+            <span className="text-xs text-[var(--brand-text-muted)] shrink-0">
+              {formatTime(session.timestamp)}
+            </span>
           </div>
-        )}
-      </div>
-      {session.canResume && (
-        <button
-          onClick={() => onCopyResumeCommand(session.sourceId, session.project)}
-          className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[#0b2210] bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-hover)] rounded-[10px] transition-colors cursor-pointer shrink-0"
-          title="Copy resume command to clipboard"
-        >
-          {copied ? (
+          {showTranscriptPath && (
+            <div
+              className="mt-1 text-[11px] text-[var(--brand-text-muted)] truncate font-mono"
+              title={session.transcriptPath || "Path unavailable"}
+            >
+              {session.transcriptPath || "Path unavailable"}
+            </div>
+          )}
+        </div>
+
+        <div className="min-h-[30px] flex flex-wrap items-center gap-2 text-[11px]">
+          {metricsLoading && (
+            <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-muted)]">
+              Calculating metrics...
+            </span>
+          )}
+          {!metricsLoading && metrics && (
             <>
-              <Check className="w-3.5 h-3.5 text-[#0b2210]" />
-              <span className="text-[#0b2210] font-semibold">Copied!</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5 text-[#0b2210]" />
-              <span>Copy Resume Command</span>
+              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
+                Turns {formatCount(metrics.turnUnits)} (
+                {formatCount(metrics.exchangeCount)} exchanges)
+              </span>
+              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
+                User chars {formatCount(metrics.userCharacters)}
+              </span>
+              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
+                AI chars {formatCount(metrics.assistantCharacters)}
+              </span>
+              <span className="rounded-full border border-[var(--brand-primary)]/45 bg-[var(--brand-primary)]/12 px-2.5 py-1 text-[var(--brand-highlight)]">
+                User {metrics.userPercent}% / AI {metrics.assistantPercent}%
+              </span>
+              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
+                Ratio {metrics.ratioLabel}
+              </span>
+              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
+                Tool events {formatCount(metrics.toolEventCount)}
+              </span>
             </>
           )}
-        </button>
-      )}
-      <div className="flex items-center gap-1.5 shrink-0">
-        {(["markdown", "html", "pdf"] as ExportFormat[]).map((format) => {
-          const isExporting = exportingFormat === format;
-          return (
+        </div>
+
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          {primaryResumeCommand && (
+            <div className="relative flex items-center" ref={resumeMenuRef}>
+              <button
+                onClick={() =>
+                  void copyCommand(
+                    primaryResumeCommand.label,
+                    primaryResumeCommand.command,
+                  )
+                }
+                className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-l-[10px] border-r-0 transition-colors cursor-pointer"
+                title={primaryResumeCommand.command}
+              >
+                {copiedCommandLabel === primaryResumeCommand.label ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[var(--brand-highlight)]" />
+                    <span className="font-semibold text-[var(--brand-highlight)]">
+                      Copied
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Resume</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setResumeMenuOpen((open) => !open);
+                  setExportMenuOpen(false);
+                }}
+                className="h-full px-2 py-1.5 text-[var(--brand-text-primary)] border border-[var(--brand-primary)]/60 hover:bg-[var(--brand-primary)]/12 rounded-r-[10px] transition-colors cursor-pointer"
+                aria-label="Show resume command options"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+
+              {resumeMenuOpen && (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
+                  {resumeCommands.map((option) => (
+                    <button
+                      key={option.label}
+                      onClick={() => {
+                        void copyCommand(option.label, option.command);
+                        setResumeMenuOpen(false);
+                      }}
+                      className="w-full text-left rounded-[8px] px-2.5 py-2 hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
+                      title={option.command}
+                    >
+                      <div className="text-xs text-[var(--brand-text-primary)]">
+                        {option.label}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-[var(--brand-text-muted)] truncate font-mono">
+                        {option.command}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="relative" ref={exportMenuRef}>
             <button
-              key={format}
-              onClick={() => onExportConversation(session, format)}
+              onClick={() => {
+                setExportMenuOpen((open) => !open);
+                setResumeMenuOpen(false);
+              }}
               disabled={Boolean(exportingFormat)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              title={`Export as ${format}`}
+              className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <FileDown className="w-3.5 h-3.5" />
-              <span>{isExporting ? "Exporting..." : format.toUpperCase()}</span>
+              <span>
+                {exportingFormat
+                  ? `Exporting ${exportingFormat.toUpperCase()}...`
+                  : "Export"}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5" />
             </button>
-          );
-        })}
+
+            {exportMenuOpen && !exportingFormat && (
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-40 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
+                {(["markdown", "html", "pdf"] as ExportFormat[]).map(
+                  (format) => (
+                    <button
+                      key={format}
+                      onClick={() => {
+                        onExportConversation(session, format);
+                        setExportMenuOpen(false);
+                      }}
+                      className="w-full text-left rounded-[8px] px-2.5 py-2 text-xs text-[var(--brand-text-primary)] hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
+                    >
+                      Export as {format.toUpperCase()}
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -201,20 +444,11 @@ function App() {
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [sessionMetrics, setSessionMetrics] =
+    useState<ConversationMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
     null,
-  );
-
-  const handleCopyResumeCommand = useCallback(
-    (sessionId: string, projectPath: string) => {
-      const command = `cd ${projectPath} && claude --resume ${sessionId}`;
-      navigator.clipboard.writeText(command).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    },
-    [],
   );
 
   const selectedSessionData = useMemo(() => {
@@ -224,6 +458,45 @@ function App() {
 
     return sessions.find((s) => s.id === selectedSession) || null;
   }, [sessions, selectedSession]);
+
+  useEffect(() => {
+    if (!selectedSessionData) {
+      setSessionMetrics(null);
+      setMetricsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setMetricsLoading(true);
+
+    fetch(
+      `/api/conversation/${encodeURIComponent(selectedSessionData.id)}/metrics`,
+      {
+        signal: controller.signal,
+      },
+    )
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Metrics fetch failed with status ${res.status}`);
+        }
+        return res.json() as Promise<ConversationMetrics>;
+      })
+      .then((metrics) => {
+        setSessionMetrics(metrics);
+        setMetricsLoading(false);
+      })
+      .catch((error: unknown) => {
+        if ((error as { name?: string }).name === "AbortError") {
+          return;
+        }
+        setSessionMetrics(null);
+        setMetricsLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [selectedSessionData]);
 
   const fetchProjects = useCallback((provider: ProviderFilter) => {
     fetch(`/api/projects?provider=${provider}`)
@@ -567,7 +840,7 @@ function App() {
       )}
 
       <main className="flex-1 overflow-hidden bg-[var(--brand-bg-primary)] flex flex-col">
-        <div className="h-[56px] border-b border-[var(--brand-border)]/80 flex items-center px-4 gap-4 bg-[var(--brand-bg-secondary)]/50">
+        <div className="border-b border-[var(--brand-border)]/80 flex items-center px-4 py-3 gap-4 bg-[var(--brand-bg-secondary)]/50">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="p-2 hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer"
@@ -590,10 +863,10 @@ function App() {
           {selectedSessionData && (
             <SessionHeader
               session={selectedSessionData}
-              copied={copied}
-              showTranscriptPath={Boolean(searchQuery.trim())}
+              showTranscriptPath={Boolean(selectedSessionData.transcriptPath)}
               exportingFormat={exportingFormat}
-              onCopyResumeCommand={handleCopyResumeCommand}
+              metrics={sessionMetrics}
+              metricsLoading={metricsLoading}
               onExportConversation={handleExportConversation}
             />
           )}
