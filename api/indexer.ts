@@ -7,6 +7,7 @@ import {
   type SessionProvider,
   type ConversationMessage,
 } from "./storage";
+import { loadPersistedIndex, persistIndex } from "./index-store";
 
 export type IndexState = "idle" | "indexing" | "ready" | "error";
 
@@ -36,6 +37,7 @@ export interface IndexStatus {
 interface IndexedDocument {
   sessionId: string;
   provider: SessionProvider;
+  fingerprint: string;
   text: string;
 }
 
@@ -78,6 +80,7 @@ let status: IndexStatus = {
 };
 
 let refreshPromise: Promise<void> | null = null;
+let loadPromise: Promise<void> | null = null;
 
 function extractTextFromMessage(message: ConversationMessage): string {
   if (message.summary) {
@@ -112,6 +115,18 @@ function createSearchText(
     .map((message) => extractTextFromMessage(message))
     .join("\n");
   return `${metadataText}\n${transcriptText}`.toLowerCase();
+}
+
+function createSessionFingerprint(session: Session): string {
+  return [
+    session.provider,
+    session.sourceId,
+    String(session.timestamp),
+    session.display,
+    session.project,
+    session.projectName,
+    session.transcriptPath ?? "",
+  ].join("|");
 }
 
 function toProviderCounts(): IndexStatus["counts"] {
@@ -150,19 +165,14 @@ async function buildIndex(generation: number): Promise<void> {
       totalProviders: SESSION_PROVIDERS.length,
       completedProviders: 0,
     },
-    counts: {
-      claude: 0,
-      codex: 0,
-      opencode: 0,
-      cursor: 0,
-      total: 0,
-    },
+    counts: toProviderCounts(),
     startedAt: Date.now(),
     completedAt: undefined,
     lastError: undefined,
     generation,
   };
 
+  const existingDocuments = new Map(documents);
   const nextDocuments = new Map<string, IndexedDocument>();
 
   for (const provider of SESSION_PROVIDERS) {
@@ -179,18 +189,35 @@ async function buildIndex(generation: number): Promise<void> {
     };
 
     const providerSessions = sessionsByProvider.get(provider) ?? [];
+    const pendingSessions: Session[] = [];
+
+    for (const session of providerSessions) {
+      const fingerprint = createSessionFingerprint(session);
+      const existingDocument = existingDocuments.get(session.id);
+      if (
+        existingDocument &&
+        existingDocument.fingerprint === fingerprint &&
+        existingDocument.provider === session.provider
+      ) {
+        nextDocuments.set(session.id, existingDocument);
+        continue;
+      }
+
+      pendingSessions.push(session);
+    }
+
     const concurrency = provider === "opencode" ? 8 : 2;
     let sessionIndex = 0;
 
     const worker = async () => {
-      while (sessionIndex < providerSessions.length) {
+      while (sessionIndex < pendingSessions.length) {
         if (status.generation !== generation) {
           return;
         }
 
         const currentIndex = sessionIndex;
         sessionIndex += 1;
-        const session = providerSessions[currentIndex];
+        const session = pendingSessions[currentIndex];
 
         let text = "";
         if (session.provider === "opencode") {
@@ -213,6 +240,7 @@ async function buildIndex(generation: number): Promise<void> {
         nextDocuments.set(session.id, {
           sessionId: session.id,
           provider: session.provider,
+          fingerprint: createSessionFingerprint(session),
           text,
         });
 
@@ -242,6 +270,19 @@ async function buildIndex(generation: number): Promise<void> {
     documents.set(sessionId, document);
   }
 
+  try {
+    await persistIndex(
+      Array.from(documents.values()).map((document) => ({
+        sessionId: document.sessionId,
+        provider: document.provider,
+        fingerprint: document.fingerprint,
+        text: document.text,
+      })),
+    );
+  } catch (error) {
+    console.error("Failed to persist search index:", error);
+  }
+
   status = {
     ...status,
     state: "ready",
@@ -268,7 +309,10 @@ export function searchIndex(
   provider: SessionProvider | "all" = "all",
 ): SearchMatch[] {
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery || status.state !== "ready") {
+  const hasUsableIndex =
+    status.state === "ready" ||
+    (status.state === "indexing" && documents.size > 0);
+  if (!normalizedQuery || !hasUsableIndex) {
     return [];
   }
 
@@ -324,6 +368,7 @@ export function startIndexRefresh(): IndexStatus {
       currentProvider: undefined,
     },
     generation,
+    counts: toProviderCounts(),
     startedAt: Date.now(),
     completedAt: undefined,
     lastError: undefined,
@@ -345,4 +390,45 @@ export function startIndexRefresh(): IndexStatus {
     });
 
   return getIndexStatus();
+}
+
+export function initializeIndexFromStore(): Promise<void> {
+  if (loadPromise) {
+    return loadPromise;
+  }
+
+  loadPromise = (async () => {
+    const loaded = await loadPersistedIndex();
+    if (!loaded) {
+      return;
+    }
+
+    documents.clear();
+    for (const document of loaded.documents) {
+      documents.set(document.sessionId, {
+        sessionId: document.sessionId,
+        provider: document.provider,
+        fingerprint: document.fingerprint,
+        text: document.text,
+      });
+    }
+
+    status = {
+      ...status,
+      state: "ready",
+      progress: {
+        totalSessions: documents.size,
+        indexedSessions: documents.size,
+        totalProviders: SESSION_PROVIDERS.length,
+        completedProviders: SESSION_PROVIDERS.length,
+      },
+      counts: toProviderCounts(),
+      completedAt: loaded.savedAt,
+      lastRefreshAt: loaded.savedAt,
+    };
+  })().finally(() => {
+    loadPromise = null;
+  });
+
+  return loadPromise;
 }

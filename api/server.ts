@@ -22,6 +22,7 @@ import {
   getIndexStatus,
   searchIndex,
   startIndexRefresh,
+  initializeIndexFromStore,
   type IndexStatus,
 } from "./indexer";
 import {
@@ -115,7 +116,10 @@ export function createServer(options: ServerOptions) {
 
     if (normalizedQuery) {
       const matches = searchIndex(normalizedQuery, provider);
-      if (status.state === "ready") {
+      const hasUsableIndex =
+        status.state === "ready" ||
+        (status.state === "indexing" && status.counts.total > 0);
+      if (hasUsableIndex) {
         const matchIdSet = new Set(matches.map((match) => match.sessionId));
         for (const match of matches) {
           hitsBySessionId[match.sessionId] = match.hitCount;
@@ -377,6 +381,7 @@ export function createServer(options: ServerOptions) {
     port,
     start: async () => {
       await loadStorage();
+      await initializeIndexFromStore();
       startIndexRefresh();
       const openUrl = `http://localhost:${dev ? 12000 : port}/`;
 
