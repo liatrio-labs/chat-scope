@@ -1,5 +1,5 @@
 import { readdir, readFile, stat, open } from "fs/promises";
-import { join, basename } from "path";
+import { join, basename, dirname, resolve } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
 import { execFile } from "child_process";
@@ -147,6 +147,7 @@ const openCodePartDir = () => join(openCodeStorageDir, "part");
 const claudeFileIndex = new Map<string, string>();
 const codexFileIndex = new Map<string, string>();
 const cursorFileIndex = new Map<string, string>();
+const cursorProjectPathCache = new Map<string, string>();
 let openCodeConversationCache: Map<string, ConversationMessage[]> | null = null;
 let openCodeConversationCacheMtime = 0;
 let openCodeSearchTextCache: Map<string, string> | null = null;
@@ -200,6 +201,8 @@ export function initStorage(dir?: string): void {
     "opencode.db",
   );
   cursorProjectsDir = join(homedir(), ".cursor", "projects");
+  cursorFileIndex.clear();
+  cursorProjectPathCache.clear();
   openCodeConversationCache = null;
   openCodeConversationCacheMtime = 0;
   openCodeSearchTextCache = null;
@@ -550,6 +553,118 @@ function createCursorSourceId(
   return `${projectKey}:${transcriptId}`;
 }
 
+function decodeCursorProjectKey(projectKey: string): string {
+  let decoded = `/${projectKey.replace(/-/g, "/")}`;
+  decoded = decoded.replace(/\/workspace\/json$/, "/workspace.json");
+  decoded = decoded.replace(
+    /\/config\/Cursor\/Workspaces\//,
+    "/.config/Cursor/Workspaces/",
+  );
+  return decoded;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reconstructCursorProjectPath(
+  projectKey: string,
+): Promise<string | null> {
+  const tokens = projectKey.split("-").filter(Boolean);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  let currentPath = "/";
+  let index = 0;
+
+  while (index < tokens.length) {
+    let matchedPath: string | null = null;
+    let consumed = 0;
+
+    const maxJoin = Math.min(tokens.length - index, 6);
+    for (let size = maxJoin; size >= 1; size -= 1) {
+      const slice = tokens.slice(index, index + size);
+      const dashed = slice.join("-");
+      const dotted =
+        size >= 2
+          ? `${slice.slice(0, -1).join("-")}.${slice[slice.length - 1]}`
+          : null;
+      const candidates = [dashed, dotted].filter((value): value is string =>
+        Boolean(value),
+      );
+
+      if (dashed === "config") {
+        candidates.push(".config");
+      }
+
+      for (const candidate of candidates) {
+        const candidatePath = join(currentPath, candidate);
+        if (await pathExists(candidatePath)) {
+          matchedPath = candidatePath;
+          consumed = size;
+          break;
+        }
+      }
+
+      if (matchedPath) {
+        break;
+      }
+    }
+
+    if (!matchedPath || consumed <= 0) {
+      return null;
+    }
+
+    currentPath = matchedPath;
+    index += consumed;
+  }
+
+  return currentPath;
+}
+
+async function resolveCursorProjectPath(projectKey: string): Promise<string> {
+  if (!projectKey) {
+    return projectKey;
+  }
+
+  const cached = cursorProjectPathCache.get(projectKey);
+  if (cached) {
+    return cached;
+  }
+
+  let resolvedPath = decodeCursorProjectKey(projectKey);
+  const reconstructedPath = await reconstructCursorProjectPath(projectKey);
+  if (reconstructedPath) {
+    resolvedPath = reconstructedPath;
+  }
+
+  if (resolvedPath.endsWith("/workspace.json")) {
+    try {
+      const workspaceRaw = await readFile(resolvedPath, "utf-8");
+      const workspace = JSON.parse(workspaceRaw) as {
+        folders?: Array<{ path?: string }>;
+      };
+      const folderPath = workspace.folders?.[0]?.path;
+      if (folderPath) {
+        resolvedPath = folderPath.startsWith("/")
+          ? folderPath
+          : resolve(dirname(resolvedPath), folderPath);
+      }
+    } catch {
+      // Fall back to decoded workspace.json path.
+    }
+  }
+
+  cursorProjectPathCache.set(projectKey, resolvedPath);
+  return resolvedPath;
+}
+
 function parseCursorSourceId(sourceId: string): {
   projectKey: string;
   transcriptId: string;
@@ -605,6 +720,7 @@ async function getCursorSessions(): Promise<Session[]> {
       try {
         const transcriptId = basename(filePath, ".jsonl");
         const projectKey = getCursorProjectKeyFromPath(filePath);
+        const projectPath = await resolveCursorProjectPath(projectKey);
         const sourceId = createCursorSourceId(projectKey, transcriptId);
         const content = await readFile(filePath, "utf-8");
         const lines = content.split("\n").filter(Boolean);
@@ -638,8 +754,9 @@ async function getCursorSessions(): Promise<Session[]> {
           provider: "cursor",
           display: display || `Session ${transcriptId.slice(0, 8)}`,
           timestamp: fileStat.mtimeMs,
-          project: projectKey,
-          projectName: projectKey || "Unknown",
+          project: projectPath || projectKey,
+          projectName:
+            basename(projectPath || projectKey) || projectKey || "Unknown",
           transcriptPath: filePath,
           canResume: false,
         });
