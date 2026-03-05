@@ -34,6 +34,7 @@ export function CopyButton(props: CopyButtonProps) {
       onClick={handleCopy}
       className={`p-1 rounded hover:bg-zinc-700/50 transition-colors ${className}`}
       title={copied ? "Copied!" : "Copy path"}
+      aria-label={copied ? "Copied path" : "Copy path"}
     >
       {copied ? (
         <Check size={12} className="text-emerald-400" />

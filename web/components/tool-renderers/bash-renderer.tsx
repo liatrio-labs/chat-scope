@@ -1,4 +1,11 @@
-import { Terminal, Play, AlertTriangle, CheckCircle2, Copy, Check } from "lucide-react";
+import {
+  Terminal,
+  Play,
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Check,
+} from "lucide-react";
 import { useState } from "react";
 
 interface BashInput {
@@ -40,12 +47,15 @@ export function BashRenderer(props: BashRendererProps) {
           <Terminal size={14} className="text-green-400" />
           <span className="text-xs font-medium text-zinc-300">Command</span>
           {description && (
-            <span className="text-xs text-zinc-500 truncate ml-1">— {description}</span>
+            <span className="text-xs text-zinc-500 truncate ml-1">
+              — {description}
+            </span>
           )}
           <button
             onClick={handleCopy}
             className="ml-auto p-1 hover:bg-zinc-700/50 rounded transition-colors"
             title="Copy command"
+            aria-label="Copy bash command"
           >
             {copied ? (
               <Check size={12} className="text-green-400" />
@@ -74,7 +84,9 @@ export function BashResultRenderer(props: BashResultRendererProps) {
       <div className="w-full mt-2">
         <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
           <CheckCircle2 size={14} className="text-teal-400" />
-          <span className="text-xs text-zinc-400">Command completed successfully (no output)</span>
+          <span className="text-xs text-zinc-400">
+            Command completed successfully (no output)
+          </span>
         </div>
       </div>
     );
@@ -96,13 +108,17 @@ export function BashResultRenderer(props: BashResultRendererProps) {
       >
         <div
           className={`flex items-center gap-2 px-3 py-2 border-b ${
-            isError ? "border-rose-900/30 bg-rose-900/20" : "border-zinc-700/50 bg-zinc-800/30"
+            isError
+              ? "border-rose-900/30 bg-rose-900/20"
+              : "border-zinc-700/50 bg-zinc-800/30"
           }`}
         >
           {isError ? (
             <>
               <AlertTriangle size={14} className="text-rose-400" />
-              <span className="text-xs font-medium text-rose-300">Error Output</span>
+              <span className="text-xs font-medium text-rose-300">
+                Error Output
+              </span>
             </>
           ) : (
             <>
@@ -110,7 +126,9 @@ export function BashResultRenderer(props: BashResultRendererProps) {
               <span className="text-xs font-medium text-zinc-300">Output</span>
             </>
           )}
-          <span className="text-xs text-zinc-500 ml-auto">{lines.length} lines</span>
+          <span className="text-xs text-zinc-500 ml-auto">
+            {lines.length} lines
+          </span>
         </div>
         <div className="overflow-x-auto max-h-80 overflow-y-auto">
           <pre

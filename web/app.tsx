@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Session, SessionProvider } from "@chat-scope/api";
-import { Copy, Check, FileDown, ChevronDown } from "lucide-react";
+import {
+  Copy,
+  Check,
+  FileDown,
+  ChevronDown,
+  Loader2,
+  CircleCheck,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { formatTime } from "./utils";
 import SessionList from "./components/session-list";
 import SessionView from "./components/session-view";
@@ -223,7 +232,7 @@ function SessionHeader(props: SessionHeaderProps) {
                   </button>
 
                   {resumeMenuOpen && (
-                    <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-[10px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-1 shadow-[var(--brand-shadow)]">
+                    <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-[28rem] rounded-[12px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-secondary)] p-2 shadow-[var(--brand-shadow)]">
                       {resumeCommands.map((option) => (
                         <button
                           key={option.label}
@@ -231,14 +240,36 @@ function SessionHeader(props: SessionHeaderProps) {
                             void copyCommand(option.label, option.command);
                             setResumeMenuOpen(false);
                           }}
-                          className="w-full text-left rounded-[8px] px-2.5 py-2 hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
+                          className="group w-full text-left rounded-[10px] px-2.5 py-2.5 hover:bg-[var(--brand-bg-tertiary)]/90 transition-colors"
                           title={option.command}
                         >
-                          <div className="text-xs text-[var(--brand-text-primary)]">
-                            {option.label}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm text-[var(--brand-text-primary)]">
+                              {option.label}
+                            </div>
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-[6px] border px-1.5 py-0.5 text-[10px] transition-opacity ${
+                                copiedCommandLabel === option.label
+                                  ? "border-[var(--brand-primary)]/45 text-[var(--brand-highlight)] opacity-100"
+                                  : "border-[var(--brand-border-soft)] text-[var(--brand-text-muted)] opacity-25 group-hover:opacity-100"
+                              }`}
+                            >
+                              {copiedCommandLabel === option.label ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                              <span>
+                                {copiedCommandLabel === option.label
+                                  ? "Copied"
+                                  : "Copy"}
+                              </span>
+                            </span>
                           </div>
-                          <div className="mt-0.5 text-[10px] text-[var(--brand-text-muted)] truncate font-mono">
-                            {option.command}
+                          <div className="mt-1.5 overflow-x-auto rounded-[8px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/60 px-2 py-1.5">
+                            <code className="block w-max min-w-full whitespace-nowrap text-[11px] leading-tight text-[var(--brand-text-secondary)]">
+                              {option.command}
+                            </code>
                           </div>
                         </button>
                       ))}
@@ -256,7 +287,11 @@ function SessionHeader(props: SessionHeaderProps) {
                   disabled={Boolean(exportingFormat)}
                   className="h-9 flex items-center gap-2 px-2.5 py-1.5 text-xs text-[var(--brand-text-secondary)] border border-[var(--brand-border-soft)] hover:bg-[var(--brand-bg-tertiary)] rounded-[10px] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <FileDown className="w-3.5 h-3.5" />
+                  {exportingFormat ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileDown className="w-3.5 h-3.5" />
+                  )}
                   <span>
                     {exportingFormat
                       ? `Exporting ${exportingFormat.toUpperCase()}...`
@@ -456,6 +491,20 @@ function App() {
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
     null,
   );
+  const [projectTreeSearchState, setProjectTreeSearchState] = useState<{
+    query: string;
+    hasMatches: boolean;
+    matchCount: number;
+  }>({
+    query: "",
+    hasMatches: true,
+    matchCount: 0,
+  });
+  const [exportFeedback, setExportFeedback] = useState<{
+    type: "success" | "error";
+    title: string;
+    detail?: string;
+  } | null>(null);
 
   const selectedSessionData = useMemo(() => {
     if (!selectedSession) {
@@ -464,6 +513,46 @@ function App() {
 
     return sessions.find((s) => s.id === selectedSession) || null;
   }, [sessions, selectedSession]);
+
+  const filterContextNote = useMemo(() => {
+    const activeBits: string[] = [];
+
+    if (selectedProvider !== "all") {
+      activeBits.push(`provider=${selectedProvider}`);
+    }
+    if (selectedProject) {
+      activeBits.push(
+        `project=${selectedProject.split("/").filter(Boolean).pop() || selectedProject}`,
+      );
+    }
+    if (searchQuery.trim()) {
+      activeBits.push(`search="${searchQuery.trim()}"`);
+    }
+
+    const hasProjectSearchNoMatch =
+      projectTreeSearchState.query.trim().length > 0 &&
+      !projectTreeSearchState.hasMatches;
+
+    if (!hasProjectSearchNoMatch && activeBits.length === 0) {
+      return null;
+    }
+
+    if (hasProjectSearchNoMatch && activeBits.length === 0) {
+      return "Project search has no matches. Session list still reflects current provider and recent sessions.";
+    }
+
+    if (hasProjectSearchNoMatch) {
+      return `Project search has no matches. Session list filters: ${activeBits.join(", ")}.`;
+    }
+
+    return `Session list filters: ${activeBits.join(", ")}.`;
+  }, [
+    projectTreeSearchState.hasMatches,
+    projectTreeSearchState.query,
+    searchQuery,
+    selectedProject,
+    selectedProvider,
+  ]);
 
   useEffect(() => {
     if (!selectedSessionData) {
@@ -757,6 +846,7 @@ function App() {
   const handleExportConversation = useCallback(
     async (session: Session, format: ExportFormat) => {
       setExportingFormat(format);
+      setExportFeedback(null);
       try {
         const response = await fetch(
           `/api/conversation/${encodeURIComponent(session.id)}/export?format=${format}`,
@@ -779,14 +869,39 @@ function App() {
         link.click();
         link.remove();
         URL.revokeObjectURL(objectUrl);
+
+        setExportFeedback({
+          type: "success",
+          title: `${format.toUpperCase()} export complete`,
+          detail: fileName,
+        });
       } catch (error) {
         console.error("Failed to export conversation", error);
+        setExportFeedback({
+          type: "error",
+          title: `${format.toUpperCase()} export failed`,
+          detail: "Please retry. If this keeps failing, check server logs.",
+        });
       } finally {
         setExportingFormat(null);
       }
     },
     [],
   );
+
+  useEffect(() => {
+    if (!exportFeedback) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setExportFeedback(null);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [exportFeedback]);
 
   return (
     <div className="flex h-screen bg-[var(--brand-bg-primary)] text-[var(--brand-text-primary)]">
@@ -806,6 +921,7 @@ function App() {
           projects={projects}
           selectedProject={selectedProject}
           onSelectProject={setSelectedProject}
+          onSearchStateChange={setProjectTreeSearchState}
         />
 
         <div className="border-b border-[var(--brand-border)]/80">
@@ -837,10 +953,48 @@ function App() {
           selectedSession={selectedSession}
           onSelectSession={handleSelectSession}
           loading={loading}
+          filterContextNote={filterContextNote}
         />
       </aside>
 
-      <main className="flex-1 overflow-hidden bg-[var(--brand-bg-primary)] flex flex-col">
+      <main className="relative flex-1 overflow-hidden bg-[var(--brand-bg-primary)] flex flex-col">
+        {exportFeedback && (
+          <div className="pointer-events-none absolute right-4 top-20 z-40">
+            <div
+              role="status"
+              className={`pointer-events-auto w-[min(440px,calc(100vw-2rem))] rounded-[12px] border px-3 py-2.5 text-xs shadow-[var(--brand-shadow)] backdrop-blur-sm ${
+                exportFeedback.type === "success"
+                  ? "border-[var(--brand-primary)]/45 bg-[var(--brand-bg-secondary)]/95 text-[var(--brand-highlight)]"
+                  : "border-[var(--brand-danger)]/50 bg-[var(--brand-bg-secondary)]/95 text-[var(--brand-danger)]"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                {exportFeedback.type === "success" ? (
+                  <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                ) : (
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">
+                    {exportFeedback.title}
+                  </div>
+                  {exportFeedback.detail && (
+                    <div className="mt-1 truncate text-[11px] text-[var(--brand-text-muted)]">
+                      {exportFeedback.detail}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setExportFeedback(null)}
+                  className="rounded p-1 text-[var(--brand-text-muted)] hover:bg-[var(--brand-bg-tertiary)]/80 hover:text-[var(--brand-text-secondary)]"
+                  aria-label="Dismiss export notification"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="border-b border-[var(--brand-border)]/80 flex items-center px-4 py-3 gap-4 bg-[var(--brand-bg-secondary)]/50">
           {selectedSessionData && (
             <SessionHeader

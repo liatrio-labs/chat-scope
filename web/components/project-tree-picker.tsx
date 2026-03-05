@@ -5,6 +5,11 @@ interface ProjectTreePickerProps {
   projects: string[];
   selectedProject: string | null;
   onSelectProject: (project: string | null) => void;
+  onSearchStateChange?: (state: {
+    query: string;
+    hasMatches: boolean;
+    matchCount: number;
+  }) => void;
 }
 
 interface TreeNode {
@@ -75,7 +80,8 @@ function getNodeKey(node: TreeNode): string {
 }
 
 export default function ProjectTreePicker(props: ProjectTreePickerProps) {
-  const { projects, selectedProject, onSelectProject } = props;
+  const { projects, selectedProject, onSelectProject, onSearchStateChange } =
+    props;
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -112,6 +118,33 @@ export default function ProjectTreePicker(props: ProjectTreePickerProps) {
       return a.localeCompare(b);
     });
   }, [normalizedSearch, projects]);
+
+  useEffect(() => {
+    if (!onSearchStateChange) {
+      return;
+    }
+
+    if (!normalizedSearch) {
+      onSearchStateChange({
+        query: "",
+        hasMatches: true,
+        matchCount: projects.length,
+      });
+      return;
+    }
+
+    onSearchStateChange({
+      query: search,
+      hasMatches: filteredProjects.length > 0,
+      matchCount: filteredProjects.length,
+    });
+  }, [
+    filteredProjects.length,
+    normalizedSearch,
+    onSearchStateChange,
+    projects.length,
+    search,
+  ]);
 
   const toggleNode = (nodeKey: string) => {
     setExpanded((previous) => {
@@ -247,7 +280,11 @@ export default function ProjectTreePicker(props: ProjectTreePickerProps) {
             </div>
           ) : (
             <div className="px-2 py-2 text-xs text-[var(--brand-text-muted)]">
-              No matching projects
+              <div>No matching projects</div>
+              <div className="mt-1 text-[10px] text-[var(--brand-text-muted)]/85">
+                Sessions below may still match provider and session search
+                filters.
+              </div>
             </div>
           )
         ) : tree.length > 0 ? (

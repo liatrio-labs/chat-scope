@@ -34,6 +34,7 @@ interface SessionListProps {
   selectedSession: string | null;
   onSelectSession: (sessionId: string) => void;
   loading?: boolean;
+  filterContextNote?: string | null;
 }
 
 const SessionList = memo(function SessionList(props: SessionListProps) {
@@ -48,6 +49,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
     selectedSession,
     onSelectSession,
     loading,
+    filterContextNote,
   } = props;
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +88,7 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
           {search && (
             <button
               onClick={() => onSearchChange("")}
+              aria-label="Clear session search"
               className="text-[var(--brand-text-muted)] hover:text-[var(--brand-text-secondary)] transition-colors"
             >
               <svg
@@ -129,6 +132,11 @@ const SessionList = memo(function SessionList(props: SessionListProps) {
       </div>
 
       <div className="px-3 py-3 border-b border-[var(--brand-border)]/80 bg-[var(--brand-bg-secondary)]/90">
+        {filterContextNote && (
+          <div className="mb-2 rounded-[8px] border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/55 px-2.5 py-1.5 text-[10px] text-[var(--brand-text-muted)]">
+            {filterContextNote}
+          </div>
+        )}
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-[var(--brand-text-muted)]">
