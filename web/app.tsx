@@ -505,6 +505,9 @@ function App() {
     title: string;
     detail?: string;
   } | null>(null);
+  const sessionPollInFlightRef = useRef(false);
+  const searchRevalidateInFlightRef = useRef(false);
+  const lastAutoIndexRefreshAtRef = useRef(0);
 
   const selectedSessionData = useMemo(() => {
     if (!selectedSession) {
@@ -667,6 +670,29 @@ function App() {
       });
   }, []);
 
+  const refreshSessionsSilently = useCallback(
+    async (provider: ProviderFilter) => {
+      if (sessionPollInFlightRef.current) {
+        return;
+      }
+
+      sessionPollInFlightRef.current = true;
+      try {
+        const response = await fetch(`/api/sessions?provider=${provider}`);
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as Session[];
+        setSessions(data);
+      } catch {
+        // Ignore polling failures and keep current list.
+      } finally {
+        sessionPollInFlightRef.current = false;
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     setSelectedProject(null);
     fetchProjects(selectedProvider);
@@ -768,6 +794,52 @@ function App() {
     runSearch,
     searchQuery,
     selectedProvider,
+  ]);
+
+  useEffect(() => {
+    if (selectedProvider === "claude") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshSessionsSilently(selectedProvider);
+
+      const activeQuery = searchQuery.trim();
+      if (!activeQuery || searchRevalidateInFlightRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+      const shouldAutoRefreshIndex =
+        indexStatus.state !== "indexing" &&
+        now - lastAutoIndexRefreshAtRef.current >= 15000;
+      if (shouldAutoRefreshIndex) {
+        lastAutoIndexRefreshAtRef.current = now;
+        void triggerIndexRefresh();
+      }
+
+      searchRevalidateInFlightRef.current = true;
+      setSearching(true);
+      void runSearch(activeQuery, selectedProvider)
+        .catch(() => {
+          // Keep currently shown search results if revalidation fails.
+        })
+        .finally(() => {
+          searchRevalidateInFlightRef.current = false;
+          setSearching(false);
+        });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    indexStatus.state,
+    refreshSessionsSilently,
+    runSearch,
+    searchQuery,
+    selectedProvider,
+    triggerIndexRefresh,
   ]);
 
   const handleSessionsFull = useCallback((event: MessageEvent) => {
