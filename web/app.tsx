@@ -379,6 +379,50 @@ function SessionHeader(props: SessionHeaderProps) {
 type ProviderFilter = SessionProvider | "all";
 type ExportFormat = "markdown" | "html" | "pdf";
 const SEARCH_QUERY_PARAM = "q";
+const FAVORITES_STORAGE_KEY = "chat-scope:favorites:v1";
+
+interface StoredFavorites {
+  sessionIds: string[];
+  projects: string[];
+}
+
+function readStoredFavorites(): StoredFavorites {
+  if (typeof window === "undefined") {
+    return {
+      sessionIds: [],
+      projects: [],
+    };
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
+    if (!rawValue) {
+      return {
+        sessionIds: [],
+        projects: [],
+      };
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<StoredFavorites>;
+    return {
+      sessionIds: Array.isArray(parsed.sessionIds)
+        ? parsed.sessionIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [],
+      projects: Array.isArray(parsed.projects)
+        ? parsed.projects.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [],
+    };
+  } catch {
+    return {
+      sessionIds: [],
+      projects: [],
+    };
+  }
+}
 
 function getFileNameFromDisposition(value: string | null): string | null {
   if (!value) {
@@ -484,6 +528,12 @@ function App() {
     useState<ProviderFilter>("all");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [favoriteSessionIds, setFavoriteSessionIds] = useState<Set<string>>(
+    () => new Set(readStoredFavorites().sessionIds),
+  );
+  const [favoriteProjects, setFavoriteProjects] = useState<Set<string>>(
+    () => new Set(readStoredFavorites().projects),
+  );
   const [loading, setLoading] = useState(true);
   const [sessionMetrics, setSessionMetrics] =
     useState<ConversationMetrics | null>(null);
@@ -516,6 +566,20 @@ function App() {
 
     return sessions.find((s) => s.id === selectedSession) || null;
   }, [sessions, selectedSession]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      FAVORITES_STORAGE_KEY,
+      JSON.stringify({
+        sessionIds: Array.from(favoriteSessionIds),
+        projects: Array.from(favoriteProjects),
+      } satisfies StoredFavorites),
+    );
+  }, [favoriteProjects, favoriteSessionIds]);
 
   const filterContextNote = useMemo(() => {
     const activeBits: string[] = [];
@@ -915,6 +979,30 @@ function App() {
     setSelectedSession(sessionId);
   }, []);
 
+  const handleToggleFavoriteSession = useCallback((sessionId: string) => {
+    setFavoriteSessionIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleFavoriteProject = useCallback((project: string) => {
+    setFavoriteProjects((previous) => {
+      const next = new Set(previous);
+      if (next.has(project)) {
+        next.delete(project);
+      } else {
+        next.add(project);
+      }
+      return next;
+    });
+  }, []);
+
   const handleExportConversation = useCallback(
     async (session: Session, format: ExportFormat) => {
       setExportingFormat(format);
@@ -991,8 +1079,10 @@ function App() {
 
         <ProjectTreePicker
           projects={projects}
+          favoriteProjects={favoriteProjects}
           selectedProject={selectedProject}
           onSelectProject={setSelectedProject}
+          onToggleFavoriteProject={handleToggleFavoriteProject}
           onSearchStateChange={setProjectTreeSearchState}
         />
 
@@ -1016,6 +1106,7 @@ function App() {
         </div>
         <SessionList
           sessions={filteredSessions}
+          favoriteSessionIds={favoriteSessionIds}
           search={searchQuery}
           searching={searching}
           onSearchChange={setSearchQuery}
@@ -1024,6 +1115,7 @@ function App() {
           onRefreshIndex={triggerIndexRefresh}
           selectedSession={selectedSession}
           onSelectSession={handleSelectSession}
+          onToggleFavoriteSession={handleToggleFavoriteSession}
           loading={loading}
           filterContextNote={filterContextNote}
         />
