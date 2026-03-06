@@ -1066,14 +1066,17 @@ function App() {
   return (
     <div className="flex h-screen bg-[var(--brand-bg-primary)] text-[var(--brand-text-primary)]">
       <aside className="w-80 border-r border-[var(--brand-border)]/80 flex flex-col bg-[var(--brand-bg-secondary)]/80 backdrop-blur-sm">
-        <div className="h-[56px] border-b border-[var(--brand-border)]/80 flex items-center px-4">
+        <div className="h-[88px] border-b border-[var(--brand-border)]/80 flex items-center px-4 gap-4">
           <img
             src="/brand/liatrio-labs-horizontal-color-transparent.svg"
             alt="ChatScope"
-            className="h-6 w-auto"
+            className="h-14 w-auto shrink-0"
           />
-          <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[var(--brand-text-muted)]">
-            ChatScope
+          <span className="ml-auto text-right text-sm uppercase tracking-[0.22em] drop-shadow-[0_0_10px_rgba(145,255,0,0.16)]">
+            <span className="text-[var(--brand-text-muted)]/90">Chat</span>
+            <span className="ml-1 font-semibold text-[var(--brand-highlight)]">
+              Scope
+            </span>
           </span>
         </div>
 
