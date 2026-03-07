@@ -1,5 +1,9 @@
 # Chat Scope
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Chat Scope screenshot" width="1200" />
+</p>
+
 Search and explore local AI coding assistant session history across providers in a fast web UI.
 
 ## Quick Start
@@ -16,7 +20,7 @@ Run a specific branch:
 npx --yes --package=github:liatrio-labs/chat-scope#<branch> -- chat-scope
 ```
 
-Run from a local clone:
+Run from local directory after cloning:
 
 ```bash
 npx .
@@ -56,7 +60,6 @@ Options:
   --no-open                  Do not open browser automatically
   -h, --help                 display help for command
 ```
-
 
 ## Requirements
 
