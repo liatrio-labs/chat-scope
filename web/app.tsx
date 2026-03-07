@@ -20,23 +20,7 @@ interface SessionHeaderProps {
   session: Session;
   showTranscriptPath: boolean;
   exportingFormat: ExportFormat | null;
-  metrics: ConversationMetrics | null;
-  metricsLoading: boolean;
   onExportConversation: (session: Session, format: ExportFormat) => void;
-}
-
-interface ConversationMetrics {
-  turnUnits: number;
-  exchangeCount: number;
-  userMessageCount: number;
-  assistantMessageCount: number;
-  userCharacters: number;
-  assistantCharacters: number;
-  totalCharacters: number;
-  userPercent: number;
-  assistantPercent: number;
-  ratioLabel: string;
-  toolEventCount: number;
 }
 
 interface ResumeCommandOption {
@@ -119,19 +103,9 @@ function getResumeCommands(session: Session): ResumeCommandOption[] {
   return [];
 }
 
-function formatCount(value: number): string {
-  return new Intl.NumberFormat().format(value);
-}
-
 function SessionHeader(props: SessionHeaderProps) {
-  const {
-    session,
-    showTranscriptPath,
-    exportingFormat,
-    metrics,
-    metricsLoading,
-    onExportConversation,
-  } = props;
+  const { session, showTranscriptPath, exportingFormat, onExportConversation } =
+    props;
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false);
   const [copiedCommandLabel, setCopiedCommandLabel] = useState<string | null>(
@@ -340,37 +314,6 @@ function SessionHeader(props: SessionHeaderProps) {
             </div>
           )}
         </div>
-
-        <div className="min-h-[30px] flex flex-wrap items-center gap-2 text-[11px]">
-          {metricsLoading && (
-            <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-muted)]">
-              Calculating metrics...
-            </span>
-          )}
-          {!metricsLoading && metrics && (
-            <>
-              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
-                Turns {formatCount(metrics.turnUnits)} (
-                {formatCount(metrics.exchangeCount)} exchanges)
-              </span>
-              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
-                User chars {formatCount(metrics.userCharacters)}
-              </span>
-              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
-                AI chars {formatCount(metrics.assistantCharacters)}
-              </span>
-              <span className="rounded-full border border-[var(--brand-primary)]/45 bg-[var(--brand-primary)]/12 px-2.5 py-1 text-[var(--brand-highlight)]">
-                User {metrics.userPercent}% / AI {metrics.assistantPercent}%
-              </span>
-              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
-                Ratio {metrics.ratioLabel}
-              </span>
-              <span className="rounded-full border border-[var(--brand-border-soft)] bg-[var(--brand-bg-tertiary)]/70 px-2.5 py-1 text-[var(--brand-text-secondary)]">
-                Tool events {formatCount(metrics.toolEventCount)}
-              </span>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -535,9 +478,6 @@ function App() {
     () => new Set(readStoredFavorites().projects),
   );
   const [loading, setLoading] = useState(true);
-  const [sessionMetrics, setSessionMetrics] =
-    useState<ConversationMetrics | null>(null);
-  const [metricsLoading, setMetricsLoading] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
     null,
   );
@@ -620,45 +560,6 @@ function App() {
     selectedProject,
     selectedProvider,
   ]);
-
-  useEffect(() => {
-    if (!selectedSessionData) {
-      setSessionMetrics(null);
-      setMetricsLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setMetricsLoading(true);
-
-    fetch(
-      `/api/conversation/${encodeURIComponent(selectedSessionData.id)}/metrics`,
-      {
-        signal: controller.signal,
-      },
-    )
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`Metrics fetch failed with status ${res.status}`);
-        }
-        return res.json() as Promise<ConversationMetrics>;
-      })
-      .then((metrics) => {
-        setSessionMetrics(metrics);
-        setMetricsLoading(false);
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string }).name === "AbortError") {
-          return;
-        }
-        setSessionMetrics(null);
-        setMetricsLoading(false);
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [selectedSessionData]);
 
   const fetchProjects = useCallback((provider: ProviderFilter) => {
     fetch(`/api/projects?provider=${provider}`)
@@ -1168,8 +1069,6 @@ function App() {
               session={selectedSessionData}
               showTranscriptPath={Boolean(selectedSessionData.transcriptPath)}
               exportingFormat={exportingFormat}
-              metrics={sessionMetrics}
-              metricsLoading={metricsLoading}
               onExportConversation={handleExportConversation}
             />
           )}
